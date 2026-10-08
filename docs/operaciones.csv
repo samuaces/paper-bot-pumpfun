@@ -1,8 +1,2 @@
-strat,exit,symbol,mint,t_in,t_out,mc_in,reason,pnl,pnl_pct,ambiguous
-control,,TTK,BjeTZRw9eruV2z5NqrEMMxzkcXNGkJ2RTmgGVJoxh6Ww,1791437468.7277,1791440400,23241.0,stop,-3.7501,-37.5006,False
-control,x2_1h,X,E4ZFpCKre3XGeJLD6LZQosgnkLKYti54ifhC4bkBpump,1791439418.6472,1791443095.9529,2068.0,tiempo,-0.5926,-5.9259,False
-control,rapida_1h,X,E4ZFpCKre3XGeJLD6LZQosgnkLKYti54ifhC4bkBpump,1791439418.6472,1791443095.9529,2068.0,tiempo,-0.5926,-5.9259,False
-control,x2_1h,Joker,fKnhYdQEjqJ4GpRzN65ACHNmKY1o8LFgUdaGMaMpump,1791439418.6472,1791443095.9529,2045.0,tiempo,-0.5512,-5.5121,False
-control,rapida_1h,Joker,fKnhYdQEjqJ4GpRzN65ACHNmKY1o8LFgUdaGMaMpump,1791439418.6472,1791443095.9529,2045.0,tiempo,-0.5512,-5.5121,False
-basico,rapida_1h,$BITFOOTS,agYKZgcBE2XUzTypkkdJqvwPbu7k5CUZjA6Cm3jpump,1791442454.7666,1791442860,45045.0,stop,-2.8429,-28.4292,False
-impulso,rapida_1h,$BITFOOTS,agYKZgcBE2XUzTypkkdJqvwPbu7k5CUZjA6Cm3jpump,1791442454.7666,1791442860,45045.0,stop,-2.8429,-28.4292,False
+strat,exit,symbol,mint,t_in,t_out,mc_in,p_ref,reason,pnl,pnl_pct,ambiguous,sin_velas
+basico,relampago_15m,$BITFOOTS,agYKZgcBE2XUzTypkkdJqvwPbu7k5CUZjA6Cm3jpump,1.79144e+09,1791444300,134318,0.000142839,objetivo,1.35854,13.5854,False,
