@@ -3,7 +3,9 @@
 paper-bot: elige monedas graduadas de pump.fun el solo y opera con DINERO SIMULADO.
 
 No toca ninguna wallet ni pide claves: solo lee datos publicos y apunta lo que
-habria pasado, con comisiones y slippage incluidos. Sirve para medir si un filtro
+habria pasado, con comisiones y slippage incluidos. Las cuentas se llevan en euros
+(el resultado de cada operacion es su importe por lo que se mueve el precio, asi que
+no depende del cambio de divisa); el tamano de las monedas viene en dolares. Sirve para medir si un filtro
 selecciona mejor que comprar sin filtro (grupo "control") antes de arriesgar nada.
 
 Como mide:
@@ -36,11 +38,11 @@ import urllib.request
 from datetime import datetime, timezone
 
 CFG = {
-    "stake_usd": 10.0,                      # importe simulado por operacion
+    "stake_eur": 10.0,                      # importe simulado por operacion, en euros
     "fees": {"bot_pct": 1.0,                # comision del bot, por lado
              "pool_pct": 0.30,              # comision del pool, por lado
              "slippage_pct": 1.0,           # deslizamiento por lado
-             "tx_usd": 0.05},               # coste fijo por transaccion
+             "tx_eur": 0.05},               # coste fijo por transaccion, en euros
     "exit": {"tp_mult": 2.0,                # objetivo: x2...
              "tp_fraction": 1.0,            # ...y al tocarlo se vende todo
              "stop_pct": 30.0,              # stop a -30% desde la entrada
@@ -318,7 +320,7 @@ def _units(stake, price, cfg):
 
 
 def open_position(strat, mint, s, cfg, t, exit_name=DEFAULT_EXIT):
-    stake = cfg["stake_usd"]
+    stake = cfg["stake_eur"]
     return {"id": f"{strat}/{exit_name}:{mint}", "strat": strat, "exit": exit_name, "mint": mint,
             "pool": s["pool"], "symbol": s["symbol"], "t_in": t, "p_dex": s["price"], "p_ref": s["price"],
             "mc_in": s["mc"], "units": _units(stake, s["price"], cfg), "stake": stake,
@@ -339,7 +341,7 @@ def _sell(pos, frac, base_price, extra_slip, cfg, ts, reason):
         pos["status"] = "cerrada"
         pos["reason"] = reason
         pos["t_out"] = ts
-        pos["pnl"] = pos["proceeds"] - pos["stake"] - pos["n_tx"] * f["tx_usd"]
+        pos["pnl"] = pos["proceeds"] - pos["stake"] - pos["n_tx"] * f["tx_eur"]
         pos["pnl_pct"] = 100 * pos["pnl"] / pos["stake"]
 
 
@@ -644,8 +646,8 @@ def breakeven_rate(cfg, exit_name=DEFAULT_EXIT):
     k = side * side * (1 - f["slippage_pct"] / 100) / (1 + f["slippage_pct"] / 100)
     se = 1 - ex["stop_extra_slippage_pct"] / 100
     win = k * (ex["tp_fraction"] * ex["tp_mult"] + (1 - ex["tp_fraction"]) * ex["stop_after_tp_mult"] * se) \
-        - 1 - (2 if ex["tp_fraction"] >= 1 else 3) * f["tx_usd"] / cfg["stake_usd"]
-    lose = k * (1 - ex["stop_pct"] / 100) * se - 1 - 2 * f["tx_usd"] / cfg["stake_usd"]
+        - 1 - (2 if ex["tp_fraction"] >= 1 else 3) * f["tx_eur"] / cfg["stake_eur"]
+    lose = k * (1 - ex["stop_pct"] / 100) * se - 1 - 2 * f["tx_eur"] / cfg["stake_eur"]
     return 100 * (-lose) / (win - lose)
 
 
@@ -787,7 +789,7 @@ def render(d):
         igual = max(q["pnl_pct"] for q in ps) - min(q["pnl_pct"] for q in ps) < 0.05
         media = sum(q["pnl_pct"] for q in ps) / len(ps)
         c = "gana" if media > 0 else "pierde"
-        det = "; ".join(f"{nom_s(q).lower()} {es(q['pnl'], 2)} $" for q in ps)
+        det = "; ".join(f"{nom_s(q).lower()} {es(q['pnl'], 2)} €" for q in ps)
         nota = (" Mismo minuto que el objetivo; cuenta como stop." if any(q["ambiguous"] for q in ps) else "") + \
                (" Cerrada con la foto de mercado, sin histórico." if any(q.get("sin_velas") for q in ps) else "")
         ev.append((p["t_out"], 1, f"<li><time>{hhmm(p['t_out'])}</time><span class='q'><em>Vende</em>{e(str(p['symbol']))}</span>"
@@ -824,7 +826,7 @@ def render(d):
                 det = f"Sin operaciones cerradas todavía (necesita {breakeven_rate(cfg, xn):.0f} % de aciertos). "
             fin = e(x["veredicto"].capitalize()) + "." if x["n"] else ""
             filas += (f"<li><span class='q'>{e(NOMBRES.get(s, s))} <em>con salida {e(SALIDAS.get(xn, xn).lower())}</em></span>"
-                      f"<span class='r {c}'>{es(x['total'], 2) + ' $' if x['n'] else '–'}</span>"
+                      f"<span class='r {c}'>{es(x['total'], 2) + ' €' if x['n'] else '–'}</span>"
                       f"<span class='d'>{e(exit_label(cfg, xn))}. {det}{fin}</span></li>")
 
     # --- salud
@@ -853,9 +855,9 @@ def render(d):
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&display=swap">
 <style>{CSS}</style></head><body><main>
 <header><div class="cab"><h1>Paper-bot pump.fun</h1>{estado}</div>
-<p class="g s" style="margin-top:6px">Dinero simulado, {es(cfg['stake_usd'], 0, False)} $ por operación. {ult}; la página se renueva sola y los datos cambian cada 10 minutos.</p></header>
+<p class="g s" style="margin-top:6px">Dinero simulado, {es(cfg['stake_eur'], 0, False)} € por operación. {ult}; la página se renueva sola y los datos cambian cada 10 minutos.</p></header>
 <section class="cifras" aria-label="Resumen">
-<div><b class="{signo}">{es(total, 2)} $</b><span>resultado de las cerradas</span></div>
+<div><b class="{signo}">{es(total, 2)} €</b><span>resultado de las cerradas</span></div>
 <div><b>{len(cl)}</b><span>cerradas, {aciertos} con objetivo</span></div>
 <div><b>{len(grupos)}</b><span>compras abiertas</span></div></section>
 <section><h2>Actividad</h2><ul class="act">{actividad}</ul></section>
@@ -864,7 +866,7 @@ def render(d):
 <section><h2>Qué reglas ganan</h2><ul class="act sinhora">{filas}</ul>
 <p class="g s" style="margin-top:8px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas.</p></section>
 <section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
-<p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. Registro iniciado el {fmt_t(st['started'])}.</p>
+<p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
 </main></body></html>"""
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
