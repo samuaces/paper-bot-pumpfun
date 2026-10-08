@@ -4,7 +4,7 @@ Bot de prueba para pump.fun con **dinero simulado**, en euros. No toca ninguna w
 
 - `aprende.py`: lo que aprende de cada operación cerrada y cómo decide con ello.
 - `bot.py`: el bot. `python bot.py tick --dir docs` hace una pasada; `test_bot.py` lo prueba sin red.
-- `.github/workflows/paper-bot.yml`: lo lanza cada 10 minutos; cada ejecución mira el mercado una vez por minuto y guarda el resultado en `docs/`.
+- `.github/workflows/paper-bot.yml`: cada ejecución trabaja unas 5 horas y media (mira el mercado una vez por minuto y guarda en `docs/` cada 10) y, al acabar, deja pedida la siguiente. Si alguna vez se para: pestaña Actions → paper-bot → Run workflow.
 - `docs/index.html`: informe (se publica con GitHub Pages). Incluye un apartado «Salud del bot» con sus propias comprobaciones.
 - `docs/config.json` (opcional): para cambiar reglas sin tocar el código.
 - `docs/estado.json`: la memoria del bot. Las pruebas cerradas hace más de 2 horas salen de ahí para que no crezca sin fin: lo aprendido de ellas y sus cifras se quedan resumidos dentro, y el detalle de cada una pasa a `docs/archivo/vN-AAAAMMDD-HH.csv` (hora UTC; N es el método de medición, ahora el 3). `docs/operaciones.csv` tiene solo las últimas. Las operaciones de la cuenta no se archivan.

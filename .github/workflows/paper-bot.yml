@@ -7,6 +7,7 @@ on:
     paths: ["bot.py", "aprende.py", ".github/workflows/paper-bot.yml"]
 permissions:
   contents: write
+  actions: write       # para que cada ejecucion pueda dejar pedida la siguiente
 concurrency:
   group: paper-bot
   cancel-in-progress: false
@@ -24,6 +25,7 @@ jobs:
       # GitHub no lanza las ejecuciones programadas con puntualidad, asi que cada una trabaja ~5 horas y media:
       # una pasada por minuto, guardando cada 10. La siguiente espera en cola y toma el relevo.
       - run: |
+          echo "INICIO=$(date +%s)" >> "$GITHUB_ENV"
           git config user.name "paper-bot"
           git config user.email "paper-bot@users.noreply.github.com"
           for i in $(seq 1 34); do
@@ -33,3 +35,15 @@ jobs:
             git pull -q --rebase origin main
             git push -q
           done
+      # GitHub nunca ha lanzado la programacion por su cuenta, asi que cada ejecucion deja pedida la siguiente,
+      # que espera en cola y arranca cuando esta termina. Solo si esta ha durado mas de 10 minutos: si algo
+      # falla nada mas empezar, no se relanza en bucle.
+      - name: Pedir el relevo
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ $(( $(date +%s) - ${INICIO:-$(date +%s)} )) -gt 600 ]; then
+            gh workflow run paper-bot.yml --ref main
+          fi
