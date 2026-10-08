@@ -13,16 +13,19 @@ concurrency:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python bot.py tick --dir docs
-      - run: |
+      # una pasada por minuto durante 8 minutos; la siguiente ejecucion toma el relevo
+      - run: python bot.py loop --cada 60 --minutos 8 --dir docs
+      - if: always()
+        run: |
           git config user.name "paper-bot"
           git config user.email "paper-bot@users.noreply.github.com"
           git add docs
           git diff --cached --quiet || git commit -m "paper-bot: pasada"
+          git pull -q --rebase origin main || true
           git push

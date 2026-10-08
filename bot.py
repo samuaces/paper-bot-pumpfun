@@ -8,7 +8,7 @@ selecciona mejor que comprar sin filtro (grupo "control") antes de arriesgar nad
 
 Uso (solo Python 3.9+, sin instalar nada):
     python bot.py tick            una pasada (para cron / GitHub Actions)
-    python bot.py loop --cada 60  pasadas continuas cada 60 s (ordenador encendido)
+    python bot.py loop --cada 60  pasadas continuas cada 60 s (--minutos N para parar tras N minutos)
     python bot.py informe         regenera el informe sin consultar nada
 
 Salida en la carpeta --dir (por defecto ./datos):
@@ -36,10 +36,10 @@ CFG = {
              "pool_pct": 0.30,              # comision del pool, por lado
              "slippage_pct": 1.0,           # deslizamiento por lado
              "tx_usd": 0.05},               # coste fijo por transaccion
-    "exit": {"tp_mult": 2.0,                # toma de beneficio en x2...
-             "tp_fraction": 0.5,            # ...vendiendo la mitad
+    "exit": {"tp_mult": 2.0,                # objetivo: x2...
+             "tp_fraction": 1.0,            # ...y al tocarlo se vende todo
              "stop_pct": 30.0,              # stop a -30% desde la entrada
-             "stop_after_tp_mult": 1.0,     # tras el x2, stop del resto en el precio de entrada
+             "stop_after_tp_mult": 1.0,     # solo si tp_fraction < 1: stop del resto en la entrada
              "stop_extra_slippage_pct": 5.0,  # un stop se ejecuta peor que su nivel
              "max_hours": 24.0},            # cierre por tiempo
     "universe": {"dex": "pumpswap", "max_pair_age_h": 24.0, "max_watch": 1500},
@@ -455,7 +455,7 @@ def breakeven_x2_rate(cfg):
     k = side * side * (1 - f["slippage_pct"] / 100) / (1 + f["slippage_pct"] / 100)
     se = 1 - ex["stop_extra_slippage_pct"] / 100
     win = k * (ex["tp_fraction"] * ex["tp_mult"] + (1 - ex["tp_fraction"]) * ex["stop_after_tp_mult"] * se) \
-        - 1 - 3 * f["tx_usd"] / cfg["stake_usd"]
+        - 1 - (2 if ex["tp_fraction"] >= 1 else 3) * f["tx_usd"] / cfg["stake_usd"]
     lose = k * (1 - ex["stop_pct"] / 100) * se - 1 - 2 * f["tx_usd"] / cfg["stake_usd"]
     return 100 * (-lose) / (win - lose)
 
@@ -524,7 +524,7 @@ def render(d):
 <header><h1>Paper-bot pump.fun</h1><p class="mut">Dinero simulado. Última pasada: {ult} · {st['ticks']} pasadas · {len(st['watch'])} monedas en vigilancia · fuentes activas: {e(fuentes)}</p></header>
 <section class="card"><h2>¿El filtro elige mejor que comprar sin filtro?</h2><div class="scroll"><table>
 <tr><th>Estrategia</th><th>Cerradas</th><th>Abiertas</th><th>Tocan x2</th><th>Media/op.</th><th>Rango 95%</th><th>Total</th><th>Veredicto</th></tr>{filas}</table></div>
-<p class="mut" style="margin-top:10px">Con estas reglas y costes hace falta que alrededor del {be:.0f}% toque x2 antes del stop solo para no perder. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas. Cada operación simula {cfg['stake_usd']:.0f} $.</p></section>
+<p class="mut" style="margin-top:10px">Reglas: al tocar x{cfg['exit']['tp_mult']:g} se vende {'todo' if cfg['exit']['tp_fraction'] >= 1 else 'una parte'}; stop a −{cfg['exit']['stop_pct']:g}%. Con estas reglas y costes hace falta que alrededor del {be:.0f}% toque el objetivo antes del stop solo para no perder. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas. Cada operación simula {cfg['stake_usd']:.0f} $.</p></section>
 <section class="card"><h2>Abiertas</h2><div class="scroll"><table>{cab}{''.join(fila_pos(p, False) for p in ab) or vacio}</table></div></section>
 <section class="card"><h2>Últimas cerradas</h2><div class="scroll"><table>{cab}{''.join(fila_pos(p, True) for p in ce) or vacio}</table></div>
 <p class="mut" style="margin-top:10px">* stop y x2 en la misma vela: se cuenta como stop.</p></section>
@@ -540,7 +540,9 @@ def main():
     ap.add_argument("modo", choices=["tick", "loop", "informe"])
     ap.add_argument("--dir", default="datos")
     ap.add_argument("--cada", type=int, default=60, help="segundos entre pasadas en modo loop")
+    ap.add_argument("--minutos", type=float, default=0, help="en modo loop, parar tras N minutos (0 = no parar)")
     a = ap.parse_args()
+    fin = time.time() + a.minutos * 60 if a.minutos > 0 else None
     if a.modo == "informe":
         render(a.dir)
         return
@@ -552,7 +554,7 @@ def main():
             log(f"error en la pasada: {type(e).__name__}: {e}")
             if a.modo == "tick":
                 raise
-        if a.modo == "tick":
+        if a.modo == "tick" or (fin and time.time() + a.cada > fin):
             return
         time.sleep(max(15, a.cada))
 
