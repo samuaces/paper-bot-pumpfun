@@ -873,6 +873,36 @@ details summary:focus-visible,a:focus-visible{outline:2px solid var(--marca);out
 """
 
 
+# El panel pide los precios de ahora directamente a DexScreener desde el navegador, cada 15 segundos.
+# Si no puede, deja los del ultimo guardado y lo dice.
+JS_PANEL = """
+(function(){
+var el=document.getElementById("latido"),t=+el.dataset.t;
+if(t){var m=Math.round((Date.now()/1000-t)/60);
+el.querySelector("span").textContent=m<=1?" (hace un minuto)":" (hace "+m+" minutos)";
+if(m>25){var e=document.querySelector(".estado");e.className="estado mal";e.lastChild.textContent="Parado desde hace "+m+" minutos";}}
+var filas=[].slice.call(document.querySelectorAll("li[data-mint]")),nota=document.getElementById("vivo");
+if(!filas.length||!window.fetch)return;
+var mints=[],ok=0,fallo=false;
+filas.forEach(function(f){if(mints.indexOf(f.dataset.mint)<0)mints.push(f.dataset.mint);});
+function fmt(v){return (v>=0?"+":"\u2212")+Math.abs(v).toFixed(1).replace(".",",")+" %";}
+function pie(){if(!nota)return;
+if(ok){nota.textContent="Precios en vivo, actualizados hace "+Math.round((Date.now()-ok)/1000)+" s.";nota.className="s gana";}
+else if(fallo){nota.textContent="No se han podido cargar los precios en vivo; se muestran los del \u00faltimo guardado.";}}
+function ronda(){var trozos=[];for(var i=0;i<mints.length;i+=30)trozos.push(mints.slice(i,i+30));
+Promise.all(trozos.map(function(x){return fetch("https://api.dexscreener.com/tokens/v1/solana/"+x.join(",")).then(function(r){if(!r.ok)throw 0;return r.json();});}))
+.then(function(res){var px={};
+res.forEach(function(lista){(lista||[]).forEach(function(par){var v=+par.priceUsd;if(!v)return;px[par.pairAddress]=v;
+if(par.dexId==="pumpswap"&&par.baseToken&&!px[par.baseToken.address])px[par.baseToken.address]=v;});});
+filas.forEach(function(f){var v=px[f.dataset.pool]||px[f.dataset.mint];if(!v)return;
+var c=(v/+f.dataset.pref-1)*100,r=f.querySelector(".r");r.textContent=fmt(c);r.className="r "+(c>0?"gana":c<0?"pierde":"");});
+ok=Date.now();fallo=false;pie();})
+.catch(function(){fallo=true;pie();});}
+ronda();setInterval(ronda,15000);setInterval(pie,1000);
+})();
+"""
+
+
 def es(v, dec=1, signo=True):
     if v is None:
         return "–"
@@ -945,11 +975,25 @@ def render(d):
     for p in sorted(ct["abiertas"], key=lambda p: -p["t_in"]):
         mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
         fin = p["t_in"] + exit_cfg(cfg, p.get("exit"))["max_hours"] * 3600
-        cartera += (f"<li><span class='q'>{e(str(p['symbol']))} <em>{es(p['cuenta'], 2, False)} €</em></span>"
+        cartera += (f"<li data-mint='{e(p['mint'])}' data-pool='{e(str(p.get('pool', '')))}' data-pref='{p['p_ref']:.12g}'>"
+                    f"<span class='q'>{e(str(p['symbol']))} <em>{es(p['cuenta'], 2, False)} €</em></span>"
                     f"<span class='r {color(mv)}'>{es(mv)} %</span><span class='d'>Comprada a las {hhmm(p['t_in'])}. "
                     f"Salida {e(nom_s(p).lower())}: {e(exit_label(cfg, p.get('exit')))}; como tarde se vende a las {hhmm(fin)}.</span></li>")
     cartera = cartera or "<li class='vacio'>Nada en cartera ahora mismo.</li>"
     ganadas = sum(1 for p in ct["cerradas"] if pnl_cuenta(p, cfg) > 0)
+
+    # --- monedas en prueba ahora (laboratorio), una linea por moneda
+    en_prueba, vivas = {}, ""
+    for p in pos:
+        if p["status"] == "abierta":
+            en_prueba.setdefault(p["mint"], []).append(p)
+    for mint, ps in sorted(en_prueba.items(), key=lambda kv: -max(q["t_in"] for q in kv[1]))[:20]:
+        p = min(ps, key=lambda q: q["t_in"])
+        mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
+        vivas += (f"<li data-mint='{e(mint)}' data-pool='{e(str(p.get('pool', '')))}' data-pref='{p['p_ref']:.12g}'>"
+                  f"<span class='q'>{e(str(p['symbol']))}</span><span class='r {color(mv)}'>{es(mv)} %</span>"
+                  f"<span class='d'>En prueba desde las {hhmm(p['t_in'])}. Tamaño al entrar {p['mc_in'] / 1000:.0f}k $.</span></li>")
+    vivas = vivas or "<li class='vacio'>Ahora mismo no hay ninguna moneda en prueba.</li>"
 
     # --- laboratorio: actividad (una linea por compra y una por grupo de ventas iguales)
     lab, vistas, ventas, hechas = [], {}, {}, set()
@@ -1039,7 +1083,10 @@ def render(d):
 <div><b>{len(ct['abiertas'])} de {cfg['cuenta']['huecos']}</b><span>compras en cartera</span></div></section>
 <section><h2>Operaciones de la cuenta</h2><ul class="act">{act_cuenta}</ul></section>
 <section><h2>En cartera ahora</h2><ul class="act sinhora">{cartera}</ul>
-<p class="g s" style="margin-top:8px">El porcentaje es cuánto se ha movido el precio desde la compra, sin descontar costes.</p></section>
+<p class="g s" style="margin-top:8px" id="vivo">Precios del último guardado; cargando los de ahora…</p>
+<p class="g s">El porcentaje es cuánto se ha movido el precio desde la compra, sin descontar costes.</p></section>
+<section><h2>Monedas en prueba ahora</h2><ul class="act sinhora">{vivas}</ul>
+<p class="g s" style="margin-top:8px">Las {len(en_prueba)} monedas que el bot tiene compradas de mentira en el laboratorio (se muestran las 20 últimas), con su precio de ahora frente al de entrada.</p></section>
 <section><h2>Lo que va aprendiendo</h2><ul class="salud g">{''.join(f'<li>{e(x)}</li>' for x in aprendido(pos, cfg))}</ul></section>
 <section><details><summary>Laboratorio: las pruebas con las que aprende</summary>
 <p class="g s" style="margin-bottom:10px">Aparte de la cuenta, el bot prueba muchas más monedas con {es(cfg['stake_eur'], 0, False)} € de mentira cada una y todas las salidas a la vez. De ahí salen los ejemplos de los que aprende. Lleva {n_lab_ce} pruebas cerradas y {n_lab_ab} abiertas.</p>
@@ -1049,9 +1096,7 @@ def render(d):
 <section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
 <p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
 </main>
-<script>(function(){{var el=document.getElementById("latido"),t=+el.dataset.t;if(!t)return;
-var m=Math.round((Date.now()/1000-t)/60);el.querySelector("span").textContent=m<=1?" (hace un minuto)":" (hace "+m+" minutos)";
-if(m>25){{var e=document.querySelector(".estado");e.className="estado mal";e.lastChild.textContent="Parado desde hace "+m+" minutos";}}}})();</script>
+<script>{JS_PANEL}</script>
 </body></html>"""
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
