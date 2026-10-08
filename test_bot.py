@@ -71,18 +71,18 @@ bot.now = lambda: clock["t"]
 bot.time.sleep = lambda s: None
 d = tempfile.mkdtemp()
 with open(os.path.join(d, "config.json"), "w") as f:
-    json.dump({"strategies": {"control": {"one_in": 1, "age_min": [60, 120]}},     # control compra todas, para probarlo
+    json.dump({"strategies": {"control": {"one_in": 1, "age_min": [60, 120], "repite_min": 0}},   # control: una vez por moneda
                "cuenta": {"activa": False}}, f)                                    # la cuenta se prueba aparte, mas abajo
 k = 0.987 * 0.99 / 1.01 * 0.987       # comisiones y slippage de ida y vuelta
 
 
 def pos(st, strat, mint, ex="x2_24h"):
-    return next(p for p in st["positions"] if p["id"] == f"{strat}/{ex}:{mint}")
+    return next(p for p in st["positions"] if p["id"].startswith(f"{strat}/{ex}:{mint}:"))
 
 
 # --- pasada 1: quien entra donde ------------------------------------------------
 st = bot.tick(d)
-ids = sorted(p["id"] for p in st["positions"])
+ids = sorted(p["id"].rsplit(":", 1)[0] for p in st["positions"])
 esperado = sorted([f"basico/x2_24h:{m}" for m in (B, H, F, M)] + [f"impulso/x2_24h:{M}"]
                   + [f"control/x2_24h:{m}" for m in (M, N)])
 assert ids == esperado, ids   # reales: pasan basico, no impulso (h1<0); control solo edad 60-120 min
@@ -265,11 +265,44 @@ g2 = mias[1]
 bot._sell(g2, 1.0, g2["p_ref"] * 0.7, 5.0, cfgc, 800, "stop")
 est = bot.cuenta_estado(ps_, cfgc)
 assert abs(est["resultado"] - (g1["pnl"] + g2["pnl"])) < 1e-9 and notas == {"senales": 8, "tomadas": 4}
+assert all(bot.exit_cfg(cfgc, p["exit"])["max_hours"] <= 1 for p in ps_ if p.get("cuenta"))       # la cuenta solo usa salidas cortas
 cfgn = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": 1e9}})
 assert bot.cuenta_opera([senal("H")], ps_, cfgn, 900, {}) == 0                                      # si nada supera el margen, no compra
 ej = bot.ejemplos(ps_ + [dict(g1, strat="impulso")], cfgc)                                          # misma compra por dos filtros: un ejemplo
 assert sum(len(v) for v in ej.values()) == 2
 print(f"cuenta OK: 3 huecos de 10 €, saldo tras una ganada y una perdida {est['saldo']:.2f} €")
+
+# --- el control vuelve a probar la misma moneda cada hora, solo con salidas cortas ------
+d2 = tempfile.mkdtemp()
+with open(os.path.join(d2, "config.json"), "w") as f:
+    json.dump({"strategies": {"control": {"age_min": [60, 1440]}}, "cuenta": {"activa": False}}, f)
+todas = dict(bot.CFG["exits"])
+bot.CFG["exits"] = {"x2_24h": {}, "x2_1h": {"max_hours": 1.0}, "rapida_1h": {"tp_mult": 1.5, "stop_pct": 20.0, "max_hours": 1.0}}
+market[N] = copy.deepcopy(EXTRA[1])
+market[N]["pairCreatedAt"] = (T0 + 86400 - 2 * 3600) * 1000
+for m_ in list(market):
+    if m_ != N:
+        del market[m_]
+gt_pools[:] = [g for g in gt_pools if g["attributes"]["address"] == "poolN"]
+clock["t"] = T0 + 86400
+st3 = bot.tick(d2)
+assert sorted(p["exit"] for p in st3["positions"]) == ["rapida_1h", "x2_1h", "x2_24h"]           # primera vez: todas las salidas
+clock["t"] += 30 * 60
+st3 = bot.tick(d2)
+assert len(st3["positions"]) == 3                                                                # a la media hora aun no repite
+clock["t"] += 31 * 60
+st3 = bot.tick(d2)
+nuevas = [p for p in st3["positions"] if p["t_in"] == clock["t"]]
+assert sorted(p["exit"] for p in nuevas) == ["rapida_1h", "x2_1h"] and len({p["id"] for p in st3["positions"]}) == 5
+clock["t"] += 3 * 3600
+st3 = bot.tick(d2)                                                                               # y las cerradas antiguas se compactan
+viejas = [p for p in st3["positions"] if p.get("compacta")]
+assert viejas and all("events" not in p and "pnl" in p for p in viejas)
+bot.render(d2)
+assert 'id="latido"' in open(os.path.join(d2, "index.html"), encoding="utf-8").read()
+shutil.rmtree(d2)
+bot.CFG["exits"] = todas
+print("repeticion del control y compactado OK")
 
 # --- un estado del metodo anterior se reinicia; el informe sale ----------------------
 bot.render(d)

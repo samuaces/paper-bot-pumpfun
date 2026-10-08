@@ -60,9 +60,11 @@ CFG = {
     "universe": {"dex": "pumpswap", "max_pair_age_h": 24.0, "max_watch": 3000,
                  "prune_after_min": 120},   # pasada esa edad, se deja de vigilar lo que ya no puede cumplir
     "strategies": {
-        # compra a ciegas una de cada N graduadas en sus primeras horas; solo se le exige el mismo
-        # tamano minimo que a los filtros. Es de donde sale la mayor parte de lo que aprende.
-        "control": {"age_min": [30, 240], "one_in": 2, "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
+        # compra a ciegas cualquier graduada con el mismo tamano minimo que los filtros, y vuelve a
+        # probar la misma moneda cada hora mientras lo cumpla (esas repeticiones solo con las salidas de
+        # una hora o menos). Es de donde sale la mayor parte de lo que aprende.
+        "control": {"age_min": [15, 1440], "one_in": 1, "repite_min": 60,
+                    "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
                     "sources": ["gt_nuevos", "pump_recientes"]},
         # filtros publicos tipicos
         "basico": {"age_min": [30, 1440], "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
@@ -76,7 +78,8 @@ CFG = {
     "min_trades_verdict": 50,
     # la cuenta: un saldo unico que solo compra lo que el aprendizaje ve con ganancia tras costes
     "cuenta": {"activa": True, "saldo_eur": 30.0, "huecos": 3, "min_compra_eur": 3.0,
-               "margen_pct": 2.0},      # ganancia esperada minima, ya descontados los costes
+               "margen_pct": 2.0,       # ganancia esperada minima, ya descontados los costes
+               "max_horas": 1.0},       # la cuenta solo usa salidas que cierran en este tiempo como mucho
     "aprende": {"sigma0": 45.0, "tau": 10.0, "tau_bias": 10.0, "tope_pct": 150.0},
     "gt": {"pages_new": 1,        # paginas de pools nuevos cada vez que se consulta
            "new_every": 2,        # se consulta una pasada de cada N: el cupo gratuito es escaso
@@ -327,7 +330,7 @@ def _units(stake, price, cfg):
 
 def open_position(strat, mint, s, cfg, t, exit_name=DEFAULT_EXIT, feat=None):
     stake = cfg["stake_eur"]
-    return {"feat": feat or {}, "id": f"{strat}/{exit_name}:{mint}", "strat": strat, "exit": exit_name, "mint": mint,
+    return {"feat": feat or {}, "id": f"{strat}/{exit_name}:{mint}:{int(t)}", "strat": strat, "exit": exit_name, "mint": mint,
             "pool": s["pool"], "symbol": s["symbol"], "t_in": t, "p_dex": s["price"], "p_ref": s["price"],
             "mc_in": s["mc"], "units": _units(stake, s["price"], cfg), "stake": stake,
             "frac_left": 1.0, "tp_done": False, "proceeds": 0.0, "n_tx": 1, "last_check": t,
@@ -410,7 +413,8 @@ def corrige_entradas(positions, cfg):
     perdida real fue casi total. Se recalcula una sola vez. Devuelve cuantas ha corregido."""
     n = 0
     for p in positions:
-        if p.get("corregida") or not p.get("rebased") or not p.get("p_dex") or p["p_ref"] >= 0.8 * p["p_dex"]:
+        if (p.get("corregida") or p.get("compacta") or not p.get("rebased") or not p.get("p_dex")
+                or p["p_ref"] >= 0.8 * p["p_dex"]):
             continue
         hundido = p["p_ref"]
         p["corregida"], p["p_ref"] = True, p["p_dex"]
@@ -522,7 +526,8 @@ def cuenta_opera(senales, positions, cfg, t, notes):
     c = cfg["cuenta"]
     if not c.get("activa") or not senales:
         return 0
-    ms = modelos(positions, cfg)
+    ms = {xn: m for xn, m in modelos(positions, cfg).items()
+          if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9)}
     cands = []
     for strat, mint, feat, por_salida in senales:
         d = aprende.decide(ms, feat, f"{mint}:{int(t)}")
@@ -603,8 +608,17 @@ def load(d):
     return cfg, st
 
 
+SOBRAN = ("events", "units", "last_price", "now_price", "last_seen", "last_check", "frac_left", "pool", "gt_err")
+
+
 def save(d, st):
     os.makedirs(d, exist_ok=True)
+    limite = (st.get("last_tick") or now()) - 3600
+    for p in st["positions"]:           # las cerradas hace mas de una hora sueltan lo que ya no se usa
+        if p["status"] == "cerrada" and not p.get("compacta") and p.get("t_out", 0) < limite:
+            for k in SOBRAN:
+                p.pop(k, None)
+            p["compacta"] = True
     tmp = os.path.join(d, "estado.json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, separators=(",", ":"))
@@ -679,13 +693,20 @@ def tick(d):
             if (t - s["created"]) / 3600 > uni["max_pair_age_h"]:
                 del watch[m]
                 continue
-            for strat in cfg["strategies"]:
-                if strat not in w["done"] and wants(strat, s, w, cfg, t):
+            for strat, regla in cfg["strategies"].items():
+                repite = regla.get("repite_min")
+                primera = strat not in w["done"]
+                if not primera and not (repite and t - w.get("rep_t", {}).get(strat, 0) >= repite * 60):
+                    continue
+                if wants(strat, s, w, cfg, t):
                     feat = aprende.rasgos(s, w, t)
-                    por_salida = {xn: open_position(strat, m, s, cfg, t, xn, feat) for xn in cfg["exits"]}
+                    salidas = [xn for xn in cfg["exits"] if primera or exit_cfg(cfg, xn)["max_hours"] <= 1.0]
+                    por_salida = {xn: open_position(strat, m, s, cfg, t, xn, feat) for xn in salidas}
                     positions.extend(por_salida.values())
                     senales.append((strat, m, feat, por_salida))
-                    w["done"].append(strat)
+                    if primera:
+                        w["done"].append(strat)
+                    w.setdefault("rep_t", {})[strat] = t
                     entradas += 1
             if prunable(s, w, cfg, t):
                 del watch[m]
@@ -996,6 +1017,12 @@ def render(d):
     estado = ("<span class='estado mal'><i></i>Hay algo que revisar</span>" if hl["problemas"]
               else "<span class='estado'><i></i>Funcionando</span>")
     ult = f"Última actualización a las {hhmm(st['last_tick'])}" if st.get("last_tick") else "Aún no ha hecho ninguna pasada"
+    h1 = t - 3600
+    n_sen = len({(p["strat"], p["mint"], int(p["t_in"])) for p in pos if p["t_in"] > h1})
+    n_com = sum(1 for p in pos if p.get("cuenta") and p["t_in"] > h1)
+    n_ven = sum(1 for p in ct["cerradas"] if p["t_out"] > h1)
+    ahora = (f"Vigila {len(st['watch'])} monedas. En la última hora ha probado {n_sen} compra{'s' if n_sen != 1 else ''} en el laboratorio; "
+             f"la cuenta ha hecho {n_com} compra{'s' if n_com != 1 else ''} y {n_ven} venta{'s' if n_ven != 1 else ''}.")
 
     page = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="120">
@@ -1004,7 +1031,8 @@ def render(d):
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&display=swap">
 <style>{CSS}</style></head><body><main>
 <header><div class="cab"><h1>Paper-bot pump.fun</h1>{estado}</div>
-<p class="g s" style="margin-top:6px">Dinero simulado. {ult}; la página se renueva sola y los datos cambian cada 10 minutos.</p></header>
+<p class="g s" style="margin-top:6px" id="latido" data-t="{int(st.get('last_tick') or 0)}">Dinero simulado. {ult}<span></span>; la página se renueva sola y los datos cambian cada 10 minutos.</p>
+<p class="s" style="margin-top:6px">{ahora}</p></header>
 <section class="cifras" aria-label="La cuenta">
 <div><b>{es(ct['saldo'], 2, False)} €</b><span>saldo; empezó con {es(c0, 0, False)} €</span></div>
 <div><b class="{color(ct['resultado'])}">{es(ct['resultado'], 2)} €</b><span>{len(ct['cerradas'])} venta{'s' if len(ct['cerradas']) != 1 else ''}, {ganadas} con ganancia</span></div>
@@ -1020,7 +1048,11 @@ def render(d):
 <h2>Últimas pruebas</h2><ul class="act">{act_lab}</ul></details></section>
 <section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
 <p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
-</main></body></html>"""
+</main>
+<script>(function(){{var el=document.getElementById("latido"),t=+el.dataset.t;if(!t)return;
+var m=Math.round((Date.now()/1000-t)/60);el.querySelector("span").textContent=m<=1?" (hace un minuto)":" (hace "+m+" minutos)";
+if(m>25){{var e=document.querySelector(".estado");e.className="estado mal";e.lastChild.textContent="Parado desde hace "+m+" minutos";}}}})();</script>
+</body></html>"""
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
         f.write(page)
