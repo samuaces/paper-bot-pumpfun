@@ -382,7 +382,7 @@ def tick(d):
         return st
 
     # 1) salidas
-    gt_calls, velas = 0, {}
+    gt_calls, velas, n_velas = 0, {}, 0
     for p in sorted(abiertas, key=lambda q: q["last_check"]):
         s = snap.get(p["mint"])
         if s is None:
@@ -396,6 +396,7 @@ def tick(d):
             if key not in velas and gt_calls < cfg["gt_max_calls"]:
                 gt_calls += 1
                 velas[key] = gt_bars(p["pool"], p["mint"], p["last_check"], t)
+                n_velas += len(velas[key])
                 time.sleep(2.2)
             bars = velas.get(key, [])
             if bars and not (1 / 3 < bars[-1][4] / s["price"] < 3):
@@ -434,10 +435,12 @@ def tick(d):
 
     st["last_tick"], st["ticks"] = t, st["ticks"] + 1
     st["notes"]["velas"] = gt_calls
+    st["notes"]["velas_total"] = st["notes"].get("velas_total", 0) + n_velas
     save(d, st)
     n_ab = sum(1 for p in positions if p["status"] == "abierta")
     log(f"pasada {st['ticks']}: {nuevos} nuevas en vigilancia ({len(watch)} en total), "
-        f"{entradas} entradas, {n_ab} abiertas, {len(positions) - n_ab} cerradas")
+        f"{entradas} entradas, {n_ab} abiertas, {len(positions) - n_ab} cerradas"
+        + (f", {gt_calls} consultas de velas ({n_velas} velas)" if gt_calls else ""))
     return st
 
 
