@@ -37,6 +37,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+import aprende
+
 CFG = {
     "stake_eur": 10.0,                      # importe simulado por operacion, en euros
     "fees": {"bot_pct": 1.0,                # comision del bot, por lado
@@ -58,9 +60,9 @@ CFG = {
     "universe": {"dex": "pumpswap", "max_pair_age_h": 24.0, "max_watch": 3000,
                  "prune_after_min": 120},   # pasada esa edad, se deja de vigilar lo que ya no puede cumplir
     "strategies": {
-        # compra a ciegas una de cada N graduadas, una hora despues de graduarse; solo se le exige el
-        # mismo tamano minimo que a los filtros, para no llenarlo de monedas ya muertas
-        "control": {"age_min": [60, 120], "one_in": 4, "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
+        # compra a ciegas una de cada N graduadas en sus primeras horas; solo se le exige el mismo
+        # tamano minimo que a los filtros. Es de donde sale la mayor parte de lo que aprende.
+        "control": {"age_min": [30, 240], "one_in": 2, "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
                     "sources": ["gt_nuevos", "pump_recientes"]},
         # filtros publicos tipicos
         "basico": {"age_min": [30, 1440], "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
@@ -72,6 +74,10 @@ CFG = {
                     "txns_h1_min": 60, "vol_h1_min": 3000, "mc_vs_max_min": 0.5},
     },
     "min_trades_verdict": 50,
+    # la cuenta: un saldo unico que solo compra lo que el aprendizaje ve con ganancia tras costes
+    "cuenta": {"activa": True, "saldo_eur": 30.0, "huecos": 3, "min_compra_eur": 3.0,
+               "margen_pct": 2.0},      # ganancia esperada minima, ya descontados los costes
+    "aprende": {"sigma0": 45.0, "tau": 10.0, "tau_bias": 10.0, "tope_pct": 150.0},
     "gt": {"pages_new": 1,        # paginas de pools nuevos cada vez que se consulta
            "new_every": 2,        # se consulta una pasada de cada N: el cupo gratuito es escaso
            "candle_calls": 6,     # tope de monedas a las que se les pide velas en una pasada
@@ -319,9 +325,9 @@ def _units(stake, price, cfg):
     return stake * (1 - (f["bot_pct"] + f["pool_pct"]) / 100) / (price * (1 + f["slippage_pct"] / 100))
 
 
-def open_position(strat, mint, s, cfg, t, exit_name=DEFAULT_EXIT):
+def open_position(strat, mint, s, cfg, t, exit_name=DEFAULT_EXIT, feat=None):
     stake = cfg["stake_eur"]
-    return {"id": f"{strat}/{exit_name}:{mint}", "strat": strat, "exit": exit_name, "mint": mint,
+    return {"feat": feat or {}, "id": f"{strat}/{exit_name}:{mint}", "strat": strat, "exit": exit_name, "mint": mint,
             "pool": s["pool"], "symbol": s["symbol"], "t_in": t, "p_dex": s["price"], "p_ref": s["price"],
             "mc_in": s["mc"], "units": _units(stake, s["price"], cfg), "stake": stake,
             "frac_left": 1.0, "tp_done": False, "proceeds": 0.0, "n_tx": 1, "last_check": t,
@@ -446,6 +452,81 @@ def refresh_exits(positions, snap, cfg, t, notes):
     return calls, pendientes, n_velas, atraso
 
 
+def coste_pct(cfg):
+    """Lo que cuesta comprar y vender sin que el precio se mueva, en % del importe."""
+    f = cfg["fees"]
+    side = 1 - (f["bot_pct"] + f["pool_pct"]) / 100
+    k = side * side * (1 - f["slippage_pct"] / 100) / (1 + f["slippage_pct"] / 100)
+    return 100 * (1 - k) + 100 * 2 * f["tx_eur"] / cfg["stake_eur"]
+
+
+def ejemplos(positions, cfg):
+    """Operaciones de prueba cerradas, como ejemplos para aprender: {salida: [(rasgos, resultado %)]}."""
+    filas, vistos = {xn: [] for xn in cfg["exits"]}, set()
+    for p in positions:
+        xn = p.get("exit", DEFAULT_EXIT)
+        if p["status"] != "cerrada" or not p.get("feat") or xn not in filas:
+            continue
+        k = (p["mint"], int(p["t_in"]), xn)       # la misma compra vista por dos filtros cuenta una vez
+        if k in vistos:
+            continue
+        vistos.add(k)
+        filas[xn].append((aprende.vector(p["feat"]), max(-100.0, min(cfg["aprende"]["tope_pct"], p["pnl_pct"]))))
+    return filas
+
+
+def modelos(positions, cfg):
+    a = cfg["aprende"]
+    return {xn: aprende.fit(rows, -coste_pct(cfg), a["sigma0"], a["tau"], a["tau_bias"])
+            for xn, rows in ejemplos(positions, cfg).items()}
+
+
+def pnl_cuenta(p, cfg):
+    """Resultado en euros de una operacion de la cuenta: la misma operacion de prueba, a su importe."""
+    return p["cuenta"] * p["proceeds"] / p["stake"] - p["cuenta"] - p["n_tx"] * cfg["fees"]["tx_eur"]
+
+
+def cuenta_estado(positions, cfg):
+    mias = [p for p in positions if p.get("cuenta")]
+    cerr = [p for p in mias if p["status"] == "cerrada"]
+    abie = [p for p in mias if p["status"] == "abierta"]
+    resultado = sum(pnl_cuenta(p, cfg) for p in cerr)
+    saldo = cfg["cuenta"]["saldo_eur"] + resultado
+    return {"saldo": saldo, "libre": saldo - sum(p["cuenta"] for p in abie), "resultado": resultado,
+            "abiertas": abie, "cerradas": cerr}
+
+
+def cuenta_opera(senales, positions, cfg, t, notes):
+    """De las compras de prueba de esta pasada, la cuenta toma las que el aprendizaje ve con ganancia.
+    senales: [(filtro, moneda, rasgos, {salida: posicion})]. Devuelve cuantas ha tomado."""
+    c = cfg["cuenta"]
+    if not c.get("activa") or not senales:
+        return 0
+    ms = modelos(positions, cfg)
+    cands = []
+    for strat, mint, feat, por_salida in senales:
+        d = aprende.decide(ms, feat, f"{mint}:{int(t)}")
+        if d and d[0] in por_salida and d[1] > c["margen_pct"]:
+            cands.append((d[1], d[2], d[0], strat, mint, por_salida))
+    cands.sort(key=lambda x: -x[0])
+    tomadas = 0
+    for val, mu, xn, strat, mint, por_salida in cands:
+        est = cuenta_estado(positions, cfg)
+        if len(est["abiertas"]) >= c["huecos"]:
+            break
+        if any(q["mint"] == mint for q in est["abiertas"]):
+            continue
+        importe = min(est["libre"], est["saldo"] / c["huecos"])
+        if importe < c["min_compra_eur"]:
+            break
+        q = por_salida[xn]
+        q["cuenta"], q["cuenta_esp"], q["cuenta_sorteo"] = round(importe, 2), round(mu, 1), round(val, 1)
+        tomadas += 1
+    notes["senales"] = notes.get("senales", 0) + len(senales)
+    notes["tomadas"] = notes.get("tomadas", 0) + tomadas
+    return tomadas
+
+
 def wants(strat, s, w, cfg, t):
     r = cfg["strategies"][strat]
     age = (t - s["created"]) / 60.0
@@ -509,7 +590,7 @@ def save(d, st):
         json.dump(st, f, separators=(",", ":"))
     os.replace(tmp, os.path.join(d, "estado.json"))
     cols = ["strat", "exit", "symbol", "mint", "t_in", "t_out", "mc_in", "p_ref", "reason", "pnl", "pnl_pct",
-            "ambiguous", "sin_velas"]
+            "ambiguous", "sin_velas", "cuenta"]
     with open(os.path.join(d, "operaciones.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(cols)
@@ -562,8 +643,8 @@ def tick(d):
             _sell(p, p["frac_left"], 0.0, 0.0, cfg, t, "sin_datos")
     calls, pendientes, n_velas, atraso = refresh_exits(positions, snap, cfg, t, notes)
 
-    # 2) entradas
-    entradas = 0
+    # 2) entradas de prueba (el laboratorio) y, de entre ellas, las que toma la cuenta
+    entradas, senales = 0, []
     if ok:
         for m, w in list(watch.items()):
             s = snap.get(m)
@@ -579,14 +660,17 @@ def tick(d):
                 continue
             for strat in cfg["strategies"]:
                 if strat not in w["done"] and wants(strat, s, w, cfg, t):
-                    for ex_name in cfg["exits"]:
-                        positions.append(open_position(strat, m, s, cfg, t, ex_name))
+                    feat = aprende.rasgos(s, w, t)
+                    por_salida = {xn: open_position(strat, m, s, cfg, t, xn, feat) for xn in cfg["exits"]}
+                    positions.extend(por_salida.values())
+                    senales.append((strat, m, feat, por_salida))
                     w["done"].append(strat)
                     entradas += 1
             if prunable(s, w, cfg, t):
                 del watch[m]
     else:
         aviso("sin foto de mercado: en esta pasada no se evaluan entradas")
+    tomadas = cuenta_opera(senales, positions, cfg, t, notes)
 
     dur = time.time() - t0
     st["last_tick"], st["ticks"] = t, st["ticks"] + 1
@@ -606,7 +690,7 @@ def tick(d):
                      "vigilancia_llena": bool(DIAG.get("vigilancia_llena"))}
     save(d, st)
     log(f"pasada {st['ticks']} ({dur:.0f} s): {nuevos} nuevas en vigilancia ({len(watch)} en total), "
-        f"{entradas} entradas, {len(ab)} abiertas, {len(positions) - len(ab)} cerradas, "
+        f"{entradas} entradas ({tomadas} para la cuenta), {len(ab)} abiertas, {len(positions) - len(ab)} cerradas, "
         f"{calls} monedas revisadas con velas ({n_velas} velas), {pendientes} en cola")
     return st
 
@@ -757,77 +841,117 @@ def hhmm(ts):
     return fmt_t(ts)[6:11]
 
 
+def aprendido(pos, cfg):
+    """Frases, en llano, sobre lo que el bot ha aprendido hasta ahora."""
+    ej = ejemplos(pos, cfg)
+    total = sum(len(v) for v in ej.values())
+    if not total:
+        return ["Todavía no ha cerrado ninguna operación de prueba de la que aprender. Hasta entonces las compras "
+                "de la cuenta son tanteos: parte de que, sin ventaja, cada operación pierde lo que cuestan las comisiones "
+                f"(un {es(coste_pct(cfg), 1, False)} %)."]
+    out = [f"Ha aprendido de {total} operaciones de prueba cerradas."]
+    for xn, rows in ej.items():
+        if rows:
+            media = sum(y for _, y in rows) / len(rows)
+            out.append(f"Salida {SALIDAS.get(xn, xn).lower()}: {len(rows)} ejemplos, resultado medio {es(media)} %.")
+    xn = max(ej, key=lambda k: len(ej[k]))
+    if len(ej[xn]) < 30:
+        out.append("Con menos de 30 ejemplos por salida aún no distingue qué monedas van mejor; sigue probando.")
+        return out
+    a = cfg["aprende"]
+    m = aprende.fit(ej[xn], -coste_pct(cfg), a["sigma0"], a["tau"], a["tau_bias"])
+    fuertes = sorted(aprende.efectos(m), key=lambda x: -abs(x[1]) / x[2])[:4]
+    for nombre, efecto, sd in fuertes:
+        if abs(efecto) < 1:
+            continue
+        fiable = "parece fiable" if abs(efecto) > 2 * sd else "aún poco fiable"
+        out.append(f"Con la salida {SALIDAS.get(xn, xn).lower()}, las monedas {nombre} salen "
+                   f"{es(abs(efecto), 0, False)} puntos {'mejor' if efecto > 0 else 'peor'} que la media ({fiable}).")
+    return out
+
+
 def render(d):
     cfg, st = load(d)
     pos = st["positions"]
     e = html.escape
     t = now()
-    cl = [p for p in pos if p["status"] == "cerrada"]
-    ab = [p for p in pos if p["status"] == "abierta"]
-    total = sum(p["pnl"] for p in cl)
-    aciertos = sum(1 for p in cl if p["tp_done"])
-    signo = "gana" if total > 0 else "pierde" if total < 0 else ""
+    f = cfg["fees"]
     nom_s = lambda p: SALIDAS.get(p.get("exit", DEFAULT_EXIT), p.get("exit", DEFAULT_EXIT))
+    color = lambda v: "gana" if v > 0 else "pierde" if v < 0 else ""
 
-    # --- actividad: una linea por compra (aunque se pruebe con varias salidas) y una por venta
-    ev, vistas, ventas = [], {}, {}
+    # --- la cuenta
+    ct = cuenta_estado(pos, cfg)
+    c0 = cfg["cuenta"]["saldo_eur"]
+    ev = []
+    for p in ct["abiertas"] + ct["cerradas"]:
+        prueba = p.get("cuenta_esp", 0) <= cfg["cuenta"]["margen_pct"]
+        ev.append((p["t_in"], 0, f"<li><time>{hhmm(p['t_in'])}</time><span class='q'><em class='c'>Compra</em>{e(str(p['symbol']))}</span>"
+                   f"<span class='r'>{es(p['cuenta'], 2, False)} €</span><span class='d'>Salida {e(nom_s(p).lower())}: "
+                   f"{e(exit_label(cfg, p.get('exit')))}. "
+                   + ("Compra de tanteo, para aprender." if prueba else
+                      f"Lo aprendido le da un resultado esperado de {es(p.get('cuenta_esp', 0))} %.") + "</span></li>"))
+        if p["status"] == "cerrada":
+            g = pnl_cuenta(p, cfg)
+            ev.append((p["t_out"], 1, f"<li><time>{hhmm(p['t_out'])}</time><span class='q'><em>Vende</em>{e(str(p['symbol']))}</span>"
+                       f"<span class='r {color(g)}'>{es(g, 2)} €</span><span class='d'>Por {e(MOTIVOS.get(p['reason'], p['reason']))}, "
+                       f"con la salida {e(nom_s(p).lower())}: {es(100 * g / p['cuenta'])} % sobre {es(p['cuenta'], 2, False)} €.</span></li>"))
+    ev.sort(key=lambda x: (-x[0], -x[1]))
+    act_cuenta = "".join(x[2] for x in ev[:40]) or ("<li class='vacio'>La cuenta todavía no ha comprado nada. Compra cuando, entre las "
+                                                    "monedas que el bot prueba, lo aprendido apunta a ganancia después de costes.</li>")
+    cartera = ""
+    for p in sorted(ct["abiertas"], key=lambda p: -p["t_in"]):
+        mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
+        fin = p["t_in"] + exit_cfg(cfg, p.get("exit"))["max_hours"] * 3600
+        cartera += (f"<li><span class='q'>{e(str(p['symbol']))} <em>{es(p['cuenta'], 2, False)} €</em></span>"
+                    f"<span class='r {color(mv)}'>{es(mv)} %</span><span class='d'>Comprada a las {hhmm(p['t_in'])}. "
+                    f"Salida {e(nom_s(p).lower())}: {e(exit_label(cfg, p.get('exit')))}; como tarde se vende a las {hhmm(fin)}.</span></li>")
+    cartera = cartera or "<li class='vacio'>Nada en cartera ahora mismo.</li>"
+    ganadas = sum(1 for p in ct["cerradas"] if pnl_cuenta(p, cfg) > 0)
+
+    # --- laboratorio: actividad (una linea por compra y una por grupo de ventas iguales)
+    lab, vistas, ventas, hechas = [], {}, {}, set()
     for p in pos:
         k = (p["strat"], p["mint"], int(p["t_in"]))
         vistas[k] = vistas.get(k, 0) + 1
-    hechas = set()
     for p in pos:
         k = (p["strat"], p["mint"], int(p["t_in"]))
         if k not in hechas:
             hechas.add(k)
-            ev.append((p["t_in"], 0, f"<li><time>{hhmm(p['t_in'])}</time><span class='q'><em class='c'>Compra</em>{e(str(p['symbol']))}</span>"
-                       f"<span class='r'></span><span class='d'>{e(NOMBRES.get(p['strat'], p['strat']))}. "
-                       f"Capitalización {p['mc_in'] / 1000:.0f}k $. Se prueba con {vistas[k]} salida{'s' if vistas[k] != 1 else ''}.</span></li>"))
+            lab.append((p["t_in"], 0, f"<li><time>{hhmm(p['t_in'])}</time><span class='q'><em class='c'>Prueba</em>{e(str(p['symbol']))}</span>"
+                        f"<span class='r'></span><span class='d'>{e(NOMBRES.get(p['strat'], p['strat']))}. "
+                        f"Tamaño {p['mc_in'] / 1000:.0f}k $. {vistas[k]} salida{'s' if vistas[k] != 1 else ''} a la vez.</span></li>"))
         if p["status"] == "cerrada":
             ventas.setdefault((p["strat"], p["mint"], int(p["t_in"]), int(p["t_out"]) // 60, p["reason"]), []).append(p)
     for ps in ventas.values():
         p = ps[0]
         igual = max(q["pnl_pct"] for q in ps) - min(q["pnl_pct"] for q in ps) < 0.05
         media = sum(q["pnl_pct"] for q in ps) / len(ps)
-        c = "gana" if media > 0 else "pierde"
-        det = "; ".join(f"{nom_s(q).lower()} {es(q['pnl'], 2)} €" for q in ps)
+        det = "; ".join(f"{nom_s(q).lower()} {es(q['pnl_pct'])} %" for q in ps)
         nota = (" Mismo minuto que el objetivo; cuenta como stop." if any(q["ambiguous"] for q in ps) else "") + \
                (" Cerrada con la foto de mercado, sin histórico." if any(q.get("sin_velas") for q in ps) else "")
-        ev.append((p["t_out"], 1, f"<li><time>{hhmm(p['t_out'])}</time><span class='q'><em>Vende</em>{e(str(p['symbol']))}</span>"
-                   f"<span class='r {c}'>{es(media) + ' %' if igual else ''}</span><span class='d'>Por "
-                   f"{e(MOTIVOS.get(p['reason'], p['reason']))}. Salida{'s' if len(ps) > 1 else ''}: {e(det)}. "
-                   f"{e(NOMBRES.get(p['strat'], p['strat']))}.{nota}</span></li>"))
-    ev.sort(key=lambda x: (-x[0], -x[1]))
-    actividad = "".join(x[2] for x in ev[:40]) or "<li class='vacio'>Todavía no hay operaciones. La primera compra aparecerá aquí.</li>"
+        lab.append((p["t_out"], 1, f"<li><time>{hhmm(p['t_out'])}</time><span class='q'><em>Cierra</em>{e(str(p['symbol']))}</span>"
+                    f"<span class='r {color(media)}'>{es(media) + ' %' if igual else ''}</span><span class='d'>Por "
+                    f"{e(MOTIVOS.get(p['reason'], p['reason']))}. Salida{'s' if len(ps) > 1 else ''}: {e(det)}. "
+                    f"{e(NOMBRES.get(p['strat'], p['strat']))}.{nota}</span></li>"))
+    lab.sort(key=lambda x: (-x[0], -x[1]))
+    act_lab = "".join(x[2] for x in lab[:30]) or "<li class='vacio'>Todavía no hay pruebas.</li>"
 
-    # --- abiertas, una linea por compra
-    grupos = {}
-    for p in ab:
-        grupos.setdefault((p["strat"], p["mint"], int(p["t_in"])), []).append(p)
-    filas_ab = ""
-    for k, ps in sorted(grupos.items(), key=lambda kv: -kv[0][2])[:40]:
-        p = ps[0]
-        mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
-        filas_ab += (f"<li><span class='q'>{e(str(p['symbol']))}</span>"
-                     f"<span class='r {'gana' if mv > 0 else 'pierde' if mv < 0 else ''}'>{es(mv)} %</span>"
-                     f"<span class='d'>{e(NOMBRES.get(p['strat'], p['strat']))}. Entró a las {hhmm(p['t_in'])}. "
-                     f"Salidas en prueba: {e(', '.join(nom_s(q).lower() for q in ps))}.</span></li>")
-    filas_ab = filas_ab or "<li class='vacio'>Ninguna ahora mismo.</li>"
-
-    # --- comparacion de reglas
+    # --- laboratorio: comparacion de reglas
     filas = ""
     for s in cfg["strategies"]:
         for xn in cfg["exits"]:
             x = stats(pos, s, xn, cfg)
-            c = "" if x["media"] is None else ("gana" if x["media"] > 0 else "pierde")
+            c = "" if x["media"] is None else color(x["media"])
             if x["n"]:
                 det = (f"{x['n']} cerrada{'s' if x['n'] != 1 else ''}, aciertan {x['x2_pct']:.0f} % "
-                       f"(necesita {breakeven_rate(cfg, xn):.0f} %). Media por operación {es(x['media'])} %. ")
+                       f"(necesita {breakeven_rate(cfg, xn):.0f} %). {e(x['veredicto'].capitalize())}.")
             else:
-                det = f"Sin operaciones cerradas todavía (necesita {breakeven_rate(cfg, xn):.0f} % de aciertos). "
-            fin = e(x["veredicto"].capitalize()) + "." if x["n"] else ""
+                det = f"Sin operaciones cerradas todavía (necesita {breakeven_rate(cfg, xn):.0f} % de aciertos)."
             filas += (f"<li><span class='q'>{e(NOMBRES.get(s, s))} <em>con salida {e(SALIDAS.get(xn, xn).lower())}</em></span>"
-                      f"<span class='r {c}'>{es(x['total'], 2) + ' €' if x['n'] else '–'}</span>"
-                      f"<span class='d'>{e(exit_label(cfg, xn))}. {det}{fin}</span></li>")
+                      f"<span class='r {c}'>{es(x['media']) + ' %' if x['n'] else '–'}</span>"
+                      f"<span class='d'>{e(exit_label(cfg, xn))}. {det}</span></li>")
+    n_lab_ab = sum(1 for p in pos if p["status"] == "abierta")
+    n_lab_ce = len(pos) - n_lab_ab
 
     # --- salud
     hl = health(st, t)
@@ -855,16 +979,20 @@ def render(d):
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&display=swap">
 <style>{CSS}</style></head><body><main>
 <header><div class="cab"><h1>Paper-bot pump.fun</h1>{estado}</div>
-<p class="g s" style="margin-top:6px">Dinero simulado, {es(cfg['stake_eur'], 0, False)} € por operación. {ult}; la página se renueva sola y los datos cambian cada 10 minutos.</p></header>
-<section class="cifras" aria-label="Resumen">
-<div><b class="{signo}">{es(total, 2)} €</b><span>resultado de las cerradas</span></div>
-<div><b>{len(cl)}</b><span>cerradas, {aciertos} con objetivo</span></div>
-<div><b>{len(grupos)}</b><span>compras abiertas</span></div></section>
-<section><h2>Actividad</h2><ul class="act">{actividad}</ul></section>
-<section><h2>Abiertas ahora</h2><ul class="act sinhora">{filas_ab}</ul>
+<p class="g s" style="margin-top:6px">Dinero simulado. {ult}; la página se renueva sola y los datos cambian cada 10 minutos.</p></header>
+<section class="cifras" aria-label="La cuenta">
+<div><b>{es(ct['saldo'], 2, False)} €</b><span>saldo; empezó con {es(c0, 0, False)} €</span></div>
+<div><b class="{color(ct['resultado'])}">{es(ct['resultado'], 2)} €</b><span>{len(ct['cerradas'])} venta{'s' if len(ct['cerradas']) != 1 else ''}, {ganadas} con ganancia</span></div>
+<div><b>{len(ct['abiertas'])} de {cfg['cuenta']['huecos']}</b><span>compras en cartera</span></div></section>
+<section><h2>Operaciones de la cuenta</h2><ul class="act">{act_cuenta}</ul></section>
+<section><h2>En cartera ahora</h2><ul class="act sinhora">{cartera}</ul>
 <p class="g s" style="margin-top:8px">El porcentaje es cuánto se ha movido el precio desde la compra, sin descontar costes.</p></section>
-<section><h2>Qué reglas ganan</h2><ul class="act sinhora">{filas}</ul>
-<p class="g s" style="margin-top:8px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas.</p></section>
+<section><h2>Lo que va aprendiendo</h2><ul class="salud g">{''.join(f'<li>{e(x)}</li>' for x in aprendido(pos, cfg))}</ul></section>
+<section><details><summary>Laboratorio: las pruebas con las que aprende</summary>
+<p class="g s" style="margin-bottom:10px">Aparte de la cuenta, el bot prueba muchas más monedas con {es(cfg['stake_eur'], 0, False)} € de mentira cada una y todas las salidas a la vez. De ahí salen los ejemplos de los que aprende. Lleva {n_lab_ce} pruebas cerradas y {n_lab_ab} abiertas.</p>
+<h2>Resultado medio de cada regla</h2><ul class="act sinhora">{filas}</ul>
+<p class="g s" style="margin:8px 0 18px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop.</p>
+<h2>Últimas pruebas</h2><ul class="act">{act_lab}</ul></details></section>
 <section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
 <p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
 </main></body></html>"""

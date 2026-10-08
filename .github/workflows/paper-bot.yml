@@ -4,7 +4,7 @@ on:
     - cron: "3-59/10 * * * *"   # fuera de las horas en punto, que es cuando GitHub mas se retrasa
   workflow_dispatch:
   push:
-    paths: ["bot.py", ".github/workflows/paper-bot.yml"]
+    paths: ["bot.py", "aprende.py", ".github/workflows/paper-bot.yml"]
 permissions:
   contents: write
 concurrency:

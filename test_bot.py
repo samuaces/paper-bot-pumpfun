@@ -71,7 +71,8 @@ bot.now = lambda: clock["t"]
 bot.time.sleep = lambda s: None
 d = tempfile.mkdtemp()
 with open(os.path.join(d, "config.json"), "w") as f:
-    json.dump({"strategies": {"control": {"one_in": 1}}}, f)   # control compra todas, para probarlo
+    json.dump({"strategies": {"control": {"one_in": 1, "age_min": [60, 120]}},     # control compra todas, para probarlo
+               "cuenta": {"activa": False}}, f)                                    # la cuenta se prueba aparte, mas abajo
 k = 0.987 * 0.99 / 1.01 * 0.987       # comisiones y slippage de ida y vuelta
 
 
@@ -85,6 +86,7 @@ ids = sorted(p["id"] for p in st["positions"])
 esperado = sorted([f"basico/x2_24h:{m}" for m in (B, H, F, M)] + [f"impulso/x2_24h:{M}"]
                   + [f"control/x2_24h:{m}" for m in (M, N)])
 assert ids == esperado, ids   # reales: pasan basico, no impulso (h1<0); control solo edad 60-120 min
+assert all(len(p["feat"]) == 10 for p in st["positions"]) and pos(st, "impulso", M)["feat"]["bs"] == 1.75
 assert "OTRA" not in st["watch"] and not gt_pedidos       # recien entradas: aun no hay velas firmes
 print("entradas OK:", len(ids))
 
@@ -184,10 +186,84 @@ print(f"salida rapida OK: objetivo {r1['pnl_pct']:+.1f}%, tiempo {r2['pnl_pct']:
 for xn in ("x2_24h", "rapida_1h"):
     print(f"  {bot.exit_label(bot.CFG, xn)}: necesita {bot.breakeven_rate(bot.CFG, xn):.0f}% de aciertos")
 
+# --- aprendizaje: algebra, creencia de partida y que aprende un patron claro ----------
+import random
+import aprende
+rng = random.Random(7)
+n_ = 6
+Bm = [[rng.gauss(0, 1) for _ in range(n_)] for _ in range(n_)]
+A_ = [[sum(Bm[i][k] * Bm[j][k] for k in range(n_)) + (2.0 if i == j else 0.0) for j in range(n_)] for i in range(n_)]
+b_ = [rng.gauss(0, 1) for _ in range(n_)]
+L_ = aprende.cholesky(A_)
+x_ = aprende.backward(L_, aprende.forward(L_, b_))
+assert max(abs(sum(A_[i][j] * x_[j] for j in range(n_)) - b_[i]) for i in range(n_)) < 1e-9
+
+coste = bot.coste_pct(bot.CFG)
+m0 = aprende.fit([], -coste)
+feat_alta = {"age": 90, "mc": 50000, "liq": 20000, "h1": 10, "m5": 0, "bs": 1.5, "tx": 100, "turn": 0.5, "dd": 0.95, "soc": 1}
+feat_baja = dict(feat_alta, bs=0.7)
+mu0, sd0 = aprende.predice(m0, aprende.vector(feat_alta))
+assert abs(mu0 + coste) < 1e-9 and abs(sd0 - (100 + 10 * 100) ** 0.5) < 1e-6      # sin datos: pierde los costes, muy incierto
+tomadas0 = sum(aprende.decide({"a": m0}, feat_alta, f"k{i}")[1] > 2 for i in range(400)) / 400
+assert 0.3 < tomadas0 < 0.55                                                     # al principio tantea
+
+filas_ = []
+for i in range(600):
+    ft = {"age": rng.choice([30, 90, 300, 900]), "mc": rng.choice([25000, 50000, 100000, 300000]),
+          "liq": rng.choice([12000, 20000, 40000]), "h1": rng.choice([-30, -10, 10, 50]), "m5": rng.choice([-8, 0, 8]),
+          "bs": rng.choice([0.7, 1.0, 1.5]), "tx": rng.choice([30, 100, 300]), "turn": rng.choice([0.1, 0.5, 2]),
+          "dd": rng.choice([0.5, 0.8, 0.95]), "soc": rng.choice([0, 1])}
+    filas_.append((aprende.vector(ft), (25 if ft["bs"] >= 1.2 else -15) + rng.gauss(0, 20)))
+m1 = aprende.fit(filas_, -coste)
+mu_a, sd_a = aprende.predice(m1, aprende.vector(feat_alta))
+mu_b, _ = aprende.predice(m1, aprende.vector(feat_baja))
+assert mu_a > 15 and mu_b < -8 and sd_a < 6, (mu_a, mu_b, sd_a)
+t_a = sum(aprende.decide({"a": m1}, feat_alta, f"k{i}")[1] > 2 for i in range(300)) / 300
+t_b = sum(aprende.decide({"a": m1}, feat_baja, f"k{i}")[1] > 2 for i in range(300)) / 300
+assert t_a > 0.97 and t_b < 0.03, (t_a, t_b)                                      # tras aprender: compra lo bueno, evita lo malo
+assert aprende.decide({"a": m1}, feat_alta, "igual") == aprende.decide({"a": m1}, feat_alta, "igual")
+top = max(aprende.efectos(m1), key=lambda x: abs(x[1]) / x[2])
+assert "compras que ventas" in top[0] or "ventas que compras" in top[0]
+print(f"aprendizaje OK: sin datos compra el {tomadas0:.0%} de las señales; con 600 ejemplos, {t_a:.0%} de las buenas y {t_b:.0%} de las malas")
+
+# --- la cuenta de 30 euros: huecos, importes y resultado -------------------------------
+cfgc = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": -1e9}})
+ps_ = []
+def senal(mint):
+    sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
+    por = {xn: bot.open_position("basico", mint, sn, cfgc, 0, xn, feat_alta) for xn in cfgc["exits"]}
+    ps_.extend(por.values())
+    return ("basico", mint, feat_alta, por)
+notas = {}
+assert bot.cuenta_opera([senal(x) for x in "ABCDE"] + [senal("A")], ps_, cfgc, 0, notas) == 3      # 3 huecos, 5 señales
+mias = [p for p in ps_ if p.get("cuenta")]
+assert [p["cuenta"] for p in mias] == [10.0, 10.0, 10.0] and len({p["mint"] for p in mias}) == 3
+est = bot.cuenta_estado(ps_, cfgc)
+assert abs(est["saldo"] - 30) < 1e-9 and abs(est["libre"]) < 1e-9
+assert bot.cuenta_opera([senal("F")], ps_, cfgc, 60, notas) == 0                                    # sin hueco no compra
+g1 = mias[0]
+bot._sell(g1, 1.0, g1["p_ref"] * exit_tp if (exit_tp := bot.exit_cfg(cfgc, g1["exit"])["tp_mult"]) else 0, 0, cfgc, 600, "objetivo")
+assert abs(bot.pnl_cuenta(g1, cfgc) - g1["pnl"]) < 1e-9                                             # a 10 euros, igual que la prueba
+est = bot.cuenta_estado(ps_, cfgc)
+assert abs(est["saldo"] - (30 + g1["pnl"])) < 1e-9 and abs(est["libre"] - (10 + g1["pnl"])) < 1e-9
+assert bot.cuenta_opera([senal("G")], ps_, cfgc, 700, notas) == 1
+nueva = [p for p in ps_ if p.get("cuenta") and p["mint"] == "G"][0]
+assert abs(nueva["cuenta"] - round(min(est["libre"], est["saldo"] / 3), 2)) < 1e-9                  # reparte el saldo en 3
+g2 = mias[1]
+bot._sell(g2, 1.0, g2["p_ref"] * 0.7, 5.0, cfgc, 800, "stop")
+est = bot.cuenta_estado(ps_, cfgc)
+assert abs(est["resultado"] - (g1["pnl"] + g2["pnl"])) < 1e-9 and notas == {"senales": 8, "tomadas": 4}
+cfgn = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": 1e9}})
+assert bot.cuenta_opera([senal("H")], ps_, cfgn, 900, {}) == 0                                      # si nada supera el margen, no compra
+ej = bot.ejemplos(ps_ + [dict(g1, strat="impulso")], cfgc)                                          # misma compra por dos filtros: un ejemplo
+assert sum(len(v) for v in ej.values()) == 2
+print(f"cuenta OK: 3 huecos de 10 €, saldo tras una ganada y una perdida {est['saldo']:.2f} €")
+
 # --- un estado del metodo anterior se reinicia; el informe sale ----------------------
 bot.render(d)
 page = open(os.path.join(d, "index.html"), encoding="utf-8").read()
 assert "Filtro de impulso" in page and "MOMO" in page and "Salud del bot" in page
+assert "Operaciones de la cuenta" in page and "Lo que va aprendiendo" in page and "30 €" in page
 viejo = json.load(open(os.path.join(d, "estado.json")))
 del viejo["v"]
 json.dump(viejo, open(os.path.join(d, "estado.json"), "w"))
