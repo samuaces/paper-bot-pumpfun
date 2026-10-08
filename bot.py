@@ -76,7 +76,8 @@ CFG = {
                     "txns_h1_min": 60, "vol_h1_min": 3000, "mc_vs_max_min": 0.5},
     },
     "min_trades_verdict": 50,
-    # la cuenta: un saldo unico que solo compra lo que el aprendizaje ve con ganancia tras costes
+    # la cuenta: un saldo unico que solo compra lo que el aprendizaje ve con ganancia tras costes.
+    # No tantea: de probar cosas se encarga el laboratorio, que no gasta saldo.
     "cuenta": {"activa": True, "saldo_eur": 30.0, "huecos": 3, "min_compra_eur": 3.0,
                "margen_pct": 2.0,       # ganancia esperada minima, ya descontados los costes
                "max_horas": 1.0},       # la cuenta solo usa salidas que cierran en este tiempo como mucho
@@ -530,9 +531,9 @@ def cuenta_opera(senales, positions, cfg, t, notes):
           if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9)}
     cands = []
     for strat, mint, feat, por_salida in senales:
-        d = aprende.decide(ms, feat, f"{mint}:{int(t)}")
-        if d and d[0] in por_salida and d[1] > c["margen_pct"]:
-            cands.append((d[1], d[2], d[0], strat, mint, por_salida))
+        d = aprende.mejor({xn: m for xn, m in ms.items() if xn in por_salida}, feat)
+        if d and d[1] > c["margen_pct"]:        # solo si lo aprendido da ganancia esperada tras costes
+            cands.append((d[1], d[1], d[0], strat, mint, por_salida))
     cands.sort(key=lambda x: -x[0])
     tomadas = 0
     for val, mu, xn, strat, mint, por_salida in cands:

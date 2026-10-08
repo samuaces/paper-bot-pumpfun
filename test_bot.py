@@ -234,6 +234,7 @@ t_a = sum(aprende.decide({"a": m1}, feat_alta, f"k{i}")[1] > 2 for i in range(30
 t_b = sum(aprende.decide({"a": m1}, feat_baja, f"k{i}")[1] > 2 for i in range(300)) / 300
 assert t_a > 0.97 and t_b < 0.03, (t_a, t_b)                                      # tras aprender: compra lo bueno, evita lo malo
 assert aprende.decide({"a": m1}, feat_alta, "igual") == aprende.decide({"a": m1}, feat_alta, "igual")
+assert aprende.mejor({"a": m0, "b": m1}, feat_alta)[0] == "b" and aprende.mejor({"a": m0, "b": m1}, feat_baja)[0] == "a"
 top = max(aprende.efectos(m1), key=lambda x: abs(x[1]) / x[2])
 assert "compras que ventas" in top[0] or "ventas que compras" in top[0]
 print(f"aprendizaje OK: sin datos compra el {tomadas0:.0%} de las señales; con 600 ejemplos, {t_a:.0%} de las buenas y {t_b:.0%} de las malas")
@@ -266,10 +267,27 @@ bot._sell(g2, 1.0, g2["p_ref"] * 0.7, 5.0, cfgc, 800, "stop")
 est = bot.cuenta_estado(ps_, cfgc)
 assert abs(est["resultado"] - (g1["pnl"] + g2["pnl"])) < 1e-9 and notas == {"senales": 8, "tomadas": 4}
 assert all(bot.exit_cfg(cfgc, p["exit"])["max_hours"] <= 1 for p in ps_ if p.get("cuenta"))       # la cuenta solo usa salidas cortas
+cfg2 = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True}})                                       # margen normal: +2 %
+assert bot.cuenta_opera([senal("S")], [], cfg2, 0, {}) == 0                                         # sin ejemplos no compra
+hist = []
+for i in range(120):                                                                                # 120 ejemplos: bs alto gana, bs bajo pierde
+    for pre, ft, y in (("a", feat_alta, 30.0), ("b", feat_baja, -20.0)):
+        q = bot.open_position("control", f"{pre}{i}", {"price": 1.0, "mc": 5e4, "pool": "p", "symbol": "h"}, cfg2, i, "rapida_1h", ft)
+        q.update(status="cerrada", pnl_pct=y + (i % 7 - 3), pnl=0.0, t_out=i + 1)
+        hist.append(q)
+def senal2(mint, ft):
+    sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
+    por = {xn: bot.open_position("control", mint, sn, cfg2, 999, xn, ft) for xn in cfg2["exits"]}
+    hist.extend(por.values())
+    return ("control", mint, ft, por)
+assert bot.cuenta_opera([senal2("BUENA", feat_alta), senal2("MALA", feat_baja)], hist, cfg2, 999, {}) == 1
+elegida = [p for p in hist if p.get("cuenta")]
+assert [p["mint"] for p in elegida] == ["BUENA"] and elegida[0]["exit"] == "rapida_1h" and elegida[0]["cuenta_esp"] > 15
 cfgn = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": 1e9}})
 assert bot.cuenta_opera([senal("H")], ps_, cfgn, 900, {}) == 0                                      # si nada supera el margen, no compra
 ej = bot.ejemplos(ps_ + [dict(g1, strat="impulso")], cfgc)                                          # misma compra por dos filtros: un ejemplo
 assert sum(len(v) for v in ej.values()) == 2
+print("la cuenta solo compra con ganancia esperada OK")
 print(f"cuenta OK: 3 huecos de 10 €, saldo tras una ganada y una perdida {est['saldo']:.2f} €")
 
 # --- el control vuelve a probar la misma moneda cada hora, solo con salidas cortas ------

@@ -6,10 +6,10 @@ salida, acabo en +X % o -X % despues de costes". Con esos ejemplos se ajusta, pa
 salida, un modelo sencillo (regresion lineal bayesiana) que estima el resultado esperado de una
 compra nueva segun sus rasgos, junto con cuanta incertidumbre tiene esa estimacion.
 
-Para decidir se usa muestreo de Thompson: se sortea una estimacion dentro de esa incertidumbre
-y se compra si sale por encima del margen pedido. Con pocos ejemplos la incertidumbre es grande
-y el bot prueba cosas distintas; segun acumula ejemplos, repite lo que funciona y deja lo que no.
-Parte de la creencia de que, sin ventaja, una operacion pierde lo que cuestan las comisiones.
+La exploracion (probar de todo para tener ejemplos) la hace el laboratorio, que no gasta saldo.
+La cuenta solo aprovecha: compra cuando el resultado esperado supera el margen pedido, y elige la
+salida con mejor resultado esperado. Parte de la creencia de que, sin ventaja, una operacion
+pierde lo que cuestan las comisiones, asi que sin ejemplos no compra.
 
 Solo usa la biblioteca estandar de Python.
 """
@@ -151,6 +151,16 @@ def decide(models, feat, key):
         val = sum(m["mean"][i] + u[i] for i in idx)
         if best is None or val > best[1]:
             best = (name, val, sum(m["mean"][i] for i in idx))
+    return best
+
+
+def mejor(models, feat):
+    """La salida con mejor resultado esperado para unos rasgos: (salida, esperado, incertidumbre)."""
+    idx, best = vector(feat), None
+    for name, m in models.items():
+        mu, sd = predice(m, idx)
+        if best is None or mu > best[1]:
+            best = (name, mu, sd)
     return best
 
 
