@@ -108,7 +108,7 @@ assert h["status"] == "cerrada" and h["reason"] == "stop" and abs(h["pnl"] - (10
 b = pos(st, "basico", B)
 assert b["status"] == "abierta" and b["rebased"] and b["last_check"] == T0 + 120     # sin operaciones: sigue igual
 f_ = pos(st, "basico", F)
-assert f_["status"] == "abierta" and not f_["rebased"] and "gt_fail" in f_            # fuente caida: se reintentara
+assert f_["status"] == "abierta" and not f_["rebased"] and "gt_err" in f_             # sin velas: se reintentara
 assert sorted(set(gt_pedidos)) == sorted([PB, PH, PF, "poolM", "poolN"])              # una llamada por moneda
 print(f"objetivo OK: {m['pnl_pct']:+.1f}%   mecha a stop vista por velas OK: {h['pnl_pct']:+.1f}%")
 
@@ -118,7 +118,30 @@ bot.CFG["gt"]["candle_calls"] = 2
 clock["t"] = T0 + 400
 st = bot.tick(d)
 assert len(gt_pedidos) == 2 and st["notes"]["diag"]["pendientes"] == 1, (gt_pedidos, st["notes"]["diag"])
-bot.CFG["gt"]["candle_calls"] = 5
+bot.CFG["gt"]["candle_calls"] = 6
+
+# --- aviso de exceso (429): se frena, no culpa a la moneda y lo reintenta despues -------
+import urllib.error
+gt_pedidos.clear()
+exceso = {"on": True}
+_fake = bot.http_json
+def con_exceso(url, tries=3):
+    if exceso["on"] and "/ohlcv/" in url:
+        raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)
+    return _fake(url, tries)
+bot.http_json = con_exceso
+clock["t"] = T0 + 460
+st = bot.tick(d)
+b = pos(st, "basico", B)
+assert st["notes"]["diag"]["gt_429"] >= 1 and st["notes"]["diag"]["pendientes"] >= 1 and "gt_err" not in b
+assert st["notes"]["gt_gap"] > bot.CFG["gt"]["min_gap_s"] and b["last_check"] < T0 + 300
+exceso["on"] = False
+bot._gt["block"] = 0
+clock["t"] = T0 + 520
+st = bot.tick(d)
+assert pos(st, "basico", B)["last_check"] == T0 + 360 and st["notes"]["diag"]["gt_429"] == 0
+bot.http_json = _fake
+print("exceso de llamadas OK: frena y recupera")
 
 # --- un dia despues: cierre por tiempo, moneda desaparecida y moneda sin velas ------
 clock["t"] = T0 + 24 * 3600 + 400

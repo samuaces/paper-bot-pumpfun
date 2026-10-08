@@ -70,11 +70,14 @@ CFG = {
                     "txns_h1_min": 60, "vol_h1_min": 3000, "mc_vs_max_min": 0.5},
     },
     "min_trades_verdict": 50,
-    "gt": {"pages_new": 2,        # paginas de pools nuevos por pasada
-           "candle_calls": 5,     # monedas a las que se les pide velas en cada pasada (por turnos)
-           "min_gap_s": 3.0,      # separacion entre llamadas, para no pasarse del limite gratuito
+    "gt": {"pages_new": 1,        # paginas de pools nuevos cada vez que se consulta
+           "new_every": 2,        # se consulta una pasada de cada N: el cupo gratuito es escaso
+           "candle_calls": 6,     # tope de monedas a las que se les pide velas en una pasada
+           "min_gap_s": 4.0,      # separacion minima entre llamadas; se alarga sola si avisa de exceso
+           "max_gap_s": 90.0,
+           "tick_budget_s": 40,   # dentro de una pasada, no se empiezan llamadas pasado este tiempo
            "settle_s": 120,       # antiguedad minima de una vela para darla por buena
-           "fallback_min": 30},   # sin velas tanto tiempo: se usa la foto de mercado y se marca
+           "fallback_min": 30},   # moneda sin velas (error que no es de cupo) tanto tiempo: foto de mercado
 }
 
 STATE_V = 2
@@ -84,7 +87,7 @@ DEX = "https://api.dexscreener.com/tokens/v1/solana/"
 GT = "https://api.geckoterminal.com/api/v2/networks/solana/"
 PUMP = "https://frontend-api-v3.pump.fun/"
 DIAG = {}
-_gt = {"last": 0.0, "block": 0.0}
+_gt = {"last": 0.0, "block": 0.0, "gap": 0.0, "t0": 0.0, "err": ""}
 
 
 def now():
@@ -138,24 +141,41 @@ def try_json(url, what, kind, tries=2):
         return None
 
 
-def gt_json(path, what, cfg):
-    """GeckoTerminal con limite propio: llamadas espaciadas y, si avisa de exceso, pausa."""
+def gt_ready(cfg):
+    """Hay cupo y tiempo para otra llamada a GeckoTerminal dentro de esta pasada?"""
     t = time.time()
-    if t < _gt["block"]:
-        DIAG["gt_fallos"] = DIAG.get("gt_fallos", 0) + 1
+    gap = max(_gt["gap"], cfg["gt"]["min_gap_s"])
+    start = max(t, _gt["block"], _gt["last"] + gap)
+    return start - _gt["t0"] <= cfg["gt"]["tick_budget_s"]
+
+
+def gt_json(path, what, cfg):
+    """GeckoTerminal con cupo propio: llamadas espaciadas; si avisa de exceso (429), se frena sola."""
+    g = cfg["gt"]
+    _gt["err"] = ""
+    if not gt_ready(cfg):
+        _gt["err"] = "cupo"
         return None
-    wait = cfg["gt"]["min_gap_s"] - (t - _gt["last"])
+    gap = max(_gt["gap"], g["min_gap_s"])
+    wait = max(_gt["block"], _gt["last"] + gap) - time.time()
     if wait > 0:
         time.sleep(wait)
     _gt["last"] = time.time()
     DIAG["gt_calls"] = DIAG.get("gt_calls", 0) + 1
     try:
-        return http_json(GT + path, tries=1)
+        d = http_json(GT + path, tries=1)
+        _gt["gap"] = max(g["min_gap_s"], gap * 0.9)
+        return d
     except Exception as e:
         if isinstance(e, urllib.error.HTTPError) and e.code == 429:
-            _gt["block"] = time.time() + 45
-        DIAG["gt_fallos"] = DIAG.get("gt_fallos", 0) + 1
-        aviso(f"{what} no responde ({type(e).__name__}: {e})")
+            _gt["err"] = "cupo"
+            _gt["gap"] = min(g["max_gap_s"], gap * 1.6)
+            _gt["block"] = time.time() + _gt["gap"]
+            DIAG["gt_429"] = DIAG.get("gt_429", 0) + 1
+        else:
+            _gt["err"] = "fallo"
+            DIAG["gt_fallos"] = DIAG.get("gt_fallos", 0) + 1
+            aviso(f"{what} no responde ({type(e).__name__}: {e})")
         return None
 
 
@@ -180,6 +200,8 @@ def discover_gt(cfg):
     """Pools recien creados en Solana (todas las plataformas); nos quedamos con los de pump."""
     out = []
     for page in range(1, cfg["gt"]["pages_new"] + 1):
+        if not gt_ready(cfg):
+            break
         d = gt_json(f"new_pools?page={page}", "GeckoTerminal nuevos pools", cfg)
         if not d:
             break
@@ -262,7 +284,8 @@ def snapshot(mints, pools, dex):
 
 def gt_bars(pool, mint, since, until, cfg):
     """Velas de 1 min con inicio >= since y fin <= until, en orden: (inicio, o, h, l, c).
-    None si la fuente falla (no es lo mismo que [], que significa "sin operaciones")."""
+    None si no se pudo consultar (no es lo mismo que [], que significa "sin operaciones");
+    en ese caso _gt["err"] dice si fue por cupo o por un fallo de esa moneda."""
     got, before = {}, int(until)
     for _ in range(3):
         d = gt_json(f"pools/{pool}/ohlcv/minute?aggregate=1&limit=1000"
@@ -270,6 +293,7 @@ def gt_bars(pool, mint, since, until, cfg):
         try:
             rows = d["data"]["attributes"]["ohlcv_list"]
         except (TypeError, KeyError):
+            _gt["err"] = _gt["err"] or "fallo"
             return None
         oldest = None
         for r in rows:
@@ -372,37 +396,52 @@ def advance(pos, bars, until, cfg, ratios=None):
 
 
 def refresh_exits(positions, snap, cfg, t, notes):
-    """Pide velas por turnos (primero lo que lleva mas tiempo sin revisar) y actualiza salidas."""
+    """Pide velas con el cupo que haya: primero las monedas con algun plazo ya vencido, despues
+    las que llevan mas tiempo sin revisar. Lo que no entra hoy se reconstruye en otra pasada."""
     until = (int(t) - cfg["gt"]["settle_s"]) // 60 * 60
     by_pool = {}
     for p in positions:
         if p["status"] == "abierta":
+            p.pop("gt_fail", None)                  # marca del metodo anterior
             by_pool.setdefault(p["pool"], []).append(p)
+
+    def vencida(q):
+        return until >= q["t_in"] + exit_cfg(cfg, q.get("exit"))["max_hours"] * 3600
+
+    def prioridad(pool):
+        ps = by_pool[pool]
+        return (0 if any(vencida(q) for q in ps) else 1, min(q["last_check"] for q in ps))
+
     calls, pendientes, n_velas, ratios = 0, 0, 0, []
-    for pool in sorted(by_pool, key=lambda k: min(q["last_check"] for q in by_pool[k])):
+    for pool in sorted(by_pool, key=prioridad):
         ps = by_pool[pool]
         since = min(q["last_check"] if q.get("rebased") else int(q["t_in"]) // 60 * 60 for q in ps)
         if until - since < 60:
             continue
-        if calls >= cfg["gt"]["candle_calls"]:
+        if calls >= cfg["gt"]["candle_calls"] or not gt_ready(cfg):
             pendientes += 1
             continue
         calls += 1
         bars = gt_bars(pool, ps[0]["mint"], since, until, cfg)
-        if bars is None:                            # fuente caida: se reintenta; si dura, foto de mercado
-            for q in ps:
-                q.setdefault("gt_fail", t)
+        if bars is None:
+            if _gt["err"] == "cupo":                # sin cupo: se queda en cola, no es culpa de la moneda
+                pendientes += 1
+                continue
+            for q in ps:                            # la moneda no tiene velas: se reintenta; si dura, foto de mercado
+                q.setdefault("gt_err", t)
                 s = snap.get(q["mint"])
-                if s and t - q["gt_fail"] > cfg["gt"]["fallback_min"] * 60:
+                if s and t - q["gt_err"] > cfg["gt"]["fallback_min"] * 60:
                     q["sin_velas"], q["rebased"] = True, True
                     apply_bar(q, t, s["price"], s["price"], s["price"], s["price"], cfg)
             continue
         n_velas += len(bars)
         for q in ps:
-            q.pop("gt_fail", None)
+            q.pop("gt_err", None)
             advance(q, bars, until, cfg, ratios)
     notes["ratios"] = (notes.get("ratios", []) + ratios)[-80:]
-    return calls, pendientes, n_velas
+    atraso = max((until - (q["t_in"] + exit_cfg(cfg, q.get("exit"))["max_hours"] * 3600)
+                  for q in positions if q["status"] == "abierta" and vencida(q)), default=0)
+    return calls, pendientes, n_velas, atraso
 
 
 def wants(strat, s, w, cfg, t):
@@ -481,11 +520,15 @@ def tick(d):
     t0 = time.time()
     DIAG.clear()
     cfg, st = load(d)
+    _gt["t0"] = t0
+    _gt["gap"] = max(_gt["gap"], st["notes"].get("gt_gap", 0.0))
     t = now()
     uni = cfg["universe"]
     watch, positions, notes = st["watch"], st["positions"], st["notes"]
 
-    found = discover_gt(cfg) + discover_pump()
+    found = discover_pump()
+    if st["ticks"] % cfg["gt"]["new_every"] == 0:
+        found += discover_gt(cfg)
     nuevos = 0
     for it in found:
         w = watch.get(it["mint"])
@@ -499,7 +542,8 @@ def tick(d):
             nuevos += 1
         w["x"] = w["x"] or bool(it.get("x"))
         w["tg"] = w["tg"] or bool(it.get("tg"))
-    fuentes = sorted({it["source"] for it in found})
+    notes["fuentes_ts"] = {**notes.get("fuentes_ts", {}), **{it["source"]: int(t) for it in found}}
+    fuentes = sorted(k for k, v in notes["fuentes_ts"].items() if v > t - 600)
 
     abiertas = [p for p in positions if p["status"] == "abierta"]
     mints = set(watch) | {p["mint"] for p in abiertas}
@@ -514,7 +558,7 @@ def tick(d):
             p["last_seen"], p["now_price"] = t, s["price"]
         elif ok and t - p["last_seen"] > 2 * 3600:   # desaparecida: se da por perdido lo que quedaba
             _sell(p, p["frac_left"], 0.0, 0.0, cfg, t, "sin_datos")
-    calls, pendientes, n_velas = refresh_exits(positions, snap, cfg, t, notes)
+    calls, pendientes, n_velas, atraso = refresh_exits(positions, snap, cfg, t, notes)
 
     # 2) entradas
     entradas = 0
@@ -550,7 +594,10 @@ def tick(d):
     notes["ticks_ts"] = (notes.get("ticks_ts", []) + [int(t)])[-180:]
     notes["durs"] = (notes.get("durs", []) + [round(dur, 1)])[-60:]
     notes["avisos"] = (notes.get("avisos", []) + [[int(t), a] for a in DIAG.get("avisos", [])])[-40:]
+    notes["gt_gap"] = round(_gt["gap"], 1)
+    notes["gt_hist"] = (notes.get("gt_hist", []) + [[DIAG.get("gt_calls", 0), DIAG.get("gt_429", 0)]])[-120:]
     notes["diag"] = {"dur": round(dur, 1), "gt_calls": DIAG.get("gt_calls", 0), "gt_fallos": DIAG.get("gt_fallos", 0),
+                     "gt_429": DIAG.get("gt_429", 0), "gt_gap": round(_gt["gap"], 1), "atraso_vencidas_min": round(atraso / 60),
                      "dex_fallos": DIAG.get("dex_fallos", 0), "pump_fallos": DIAG.get("pump_fallos", 0),
                      "velas": n_velas, "pendientes": pendientes,
                      "revisado_hasta": min((p["last_check"] for p in ab), default=None),
@@ -617,8 +664,8 @@ def health(st, t):
         probs.append("lleva más de 15 minutos parado")
     if durs and statistics.median(durs[-15:]) > 75:
         probs.append("las pasadas tardan demasiado")
-    if diag.get("revisado_hasta") and st.get("last_tick") and st["last_tick"] - diag["revisado_hasta"] > 3600:
-        probs.append("hay operaciones sin revisar desde hace más de una hora")
+    if diag.get("atraso_vencidas_min", 0) > 45:
+        probs.append(f"hay operaciones con el plazo vencido hace {diag['atraso_vencidas_min']} minutos y aún sin cerrar")
     if med is not None and len(ratios) >= 10 and not (0.93 <= med <= 1.07):
         probs.append("las dos fuentes de precios no coinciden")
     if diag.get("vigilancia_llena"):
@@ -786,7 +833,8 @@ def render(d):
     if hl["dur"] is not None:
         lineas.append(f"Cada pasada tarda unos {hl['dur']:.0f} segundos.")
     if hl["revisado_hasta"]:
-        lineas.append(f"Todas las operaciones abiertas están revisadas al menos hasta las {hhmm(hl['revisado_hasta'])}.")
+        lineas.append(f"Precios revisados minuto a minuto: la operación más atrasada, hasta las {hhmm(hl['revisado_hasta'])}. "
+                      f"Lo que va con retraso se reconstruye después sin perder nada.")
     if hl["ratio_med"] is not None:
         lineas.append(f"Las dos fuentes de precios coinciden: diferencia típica de {es(abs(hl['ratio_med'] - 1) * 100, 1, False)} % "
                       f"en {hl['ratio_n']} compras comprobadas.")
