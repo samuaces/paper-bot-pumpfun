@@ -101,32 +101,52 @@ def backward(L, y):          # resuelve L^T x = y
 
 # ---------------------------------------------------------------- modelo
 
-def fit(rows, prior_bias, sigma0=45.0, tau=10.0, tau_bias=10.0):
+def resumen(rows=(), base=None):
+    """Lo que el ajuste necesita saber de unos ejemplos, en un tamano fijo: cuantos son, cuantas veces
+    coincide cada par de tramos y las sumas de sus resultados. Ajustar con un resumen da lo mismo que
+    ajustar con los ejemplos uno a uno, asi que los ejemplos antiguos se pueden guardar resumidos.
+    Devuelve un resumen nuevo: el de `base` (si lo hay y vale) mas el de `rows`."""
+    if base and len(base.get("b", ())) == DIM and len(base.get("A", ())) == DIM:
+        r = {"n": base["n"], "sy": base["sy"], "yy": base["yy"], "b": list(base["b"]), "A": [list(f) for f in base["A"]]}
+    else:
+        r = {"n": 0, "sy": 0.0, "yy": 0.0, "b": [0.0] * DIM, "A": [[0] * DIM for _ in range(DIM)]}
+    for idx, y in rows:
+        r["n"] += 1
+        r["sy"] += y
+        r["yy"] += y * y
+        for i in idx:
+            r["b"][i] += y
+            Ai = r["A"][i]
+            for j in idx:
+                Ai[j] += 1
+    return r
+
+
+def fit(rows, prior_bias, sigma0=45.0, tau=10.0, tau_bias=10.0, base=None):
     """rows: lista de (posiciones_activas, resultado_en_%). Devuelve el modelo ajustado.
     Creencia de partida: resultado medio = prior_bias (lo que cuestan las comisiones), y cada
-    rasgo no cambia nada; tau dice cuanto se deja mover cada una antes de ver datos."""
+    rasgo no cambia nada; tau dice cuanto se deja mover cada una antes de ver datos.
+    `base`: resumen de ejemplos antiguos (ver `resumen`), que cuentan igual que los de `rows`."""
+    r = resumen(rows, base)
+
     def solve(sig):
-        A = [[0.0] * DIM for _ in range(DIM)]
-        b = [0.0] * DIM
-        for i in range(DIM):
-            A[i][i] = 1.0 / ((tau_bias if i == 0 else tau) ** 2)
-        b[0] = prior_bias / (tau_bias ** 2)
         s2 = sig * sig
-        for idx, y in rows:
-            for i in idx:
-                b[i] += y / s2
-                Ai = A[i]
-                for j in idx:
-                    Ai[j] += 1.0 / s2
+        A = [[v / s2 for v in fila] for fila in r["A"]]
+        b = [v / s2 for v in r["b"]]
+        for i in range(DIM):
+            A[i][i] += 1.0 / ((tau_bias if i == 0 else tau) ** 2)
+        b[0] += prior_bias / (tau_bias ** 2)
         L = cholesky(A)
         return L, backward(L, forward(L, b))
 
-    n = len(rows)
+    n = r["n"]
     sig = sigma0
     L, mean = solve(sig)
     if n >= 20:              # con suficientes ejemplos, el ruido se estima de los propios datos
-        res = [y - sum(mean[i] for i in idx) for idx, y in rows]
-        sig = max(15.0, math.sqrt(sum(r * r for r in res) / (n - 1)))
+        # suma de (resultado - estimacion)^2 de todos los ejemplos, sacada del resumen
+        rss = r["yy"] - 2 * sum(m * v for m, v in zip(mean, r["b"])) \
+            + sum(mean[i] * sum(a * m for a, m in zip(r["A"][i], mean)) for i in range(DIM))
+        sig = max(15.0, math.sqrt(max(rss, 0.0) / (n - 1)))
         L, mean = solve(sig)
     return {"n": n, "sigma": sig, "mean": mean, "L": L}
 

@@ -72,7 +72,8 @@ bot.time.sleep = lambda s: None
 d = tempfile.mkdtemp()
 with open(os.path.join(d, "config.json"), "w") as f:
     json.dump({"strategies": {"control": {"one_in": 1, "age_min": [60, 120], "repite_min": 0}},   # control: una vez por moneda
-               "cuenta": {"activa": False}}, f)                                    # la cuenta se prueba aparte, mas abajo
+               "cuenta": {"activa": False},                                        # la cuenta se prueba aparte, mas abajo
+               "archiva_h": 0}, f)                                                 # y el archivado tambien
 k = 0.987 * 0.99 / 1.01 * 0.987       # comisiones y slippage de ida y vuelta
 
 
@@ -227,6 +228,32 @@ for i in range(600):
           "dd": rng.choice([0.5, 0.8, 0.95]), "soc": rng.choice([0, 1])}
     filas_.append((aprende.vector(ft), (25 if ft["bs"] >= 1.2 else -15) + rng.gauss(0, 20)))
 m1 = aprende.fit(filas_, -coste)
+def ajuste_ref(rows, prior, sigma0=45.0, tau=10.0):          # el calculo directo, ejemplo a ejemplo
+    def solve(sig):
+        A = [[0.0] * aprende.DIM for _ in range(aprende.DIM)]
+        bb = [0.0] * aprende.DIM
+        for i in range(aprende.DIM):
+            A[i][i] = 1.0 / tau ** 2
+        bb[0] = prior / tau ** 2
+        for idx, y in rows:
+            for i in idx:
+                bb[i] += y / sig ** 2
+                for j in idx:
+                    A[i][j] += 1.0 / sig ** 2
+        L = aprende.cholesky(A)
+        return aprende.backward(L, aprende.forward(L, bb))
+    mean = solve(sigma0)
+    if len(rows) >= 20:
+        sig = max(15.0, (sum((y - sum(mean[i] for i in idx)) ** 2 for idx, y in rows) / (len(rows) - 1)) ** 0.5)
+        return sig, solve(sig)
+    return sigma0, mean
+for corte in (0, 10, 19, 20, 250, 600):
+    sig_r, mean_r = ajuste_ref(filas_[:corte], -coste)
+    for parte in (0, corte // 3, corte):                     # todo a mano, parte resumida, todo resumido
+        mx = aprende.fit(filas_[parte:corte], -coste, base=json.loads(json.dumps(aprende.resumen(filas_[:parte]))))
+        assert mx["n"] == corte and abs(mx["sigma"] - sig_r) < 1e-9, (corte, parte, mx["sigma"], sig_r)
+        assert max(abs(a_ - b_) for a_, b_ in zip(mx["mean"], mean_r)) < 1e-9
+assert aprende.fit(filas_, -coste, base={"n": 5, "sy": 0, "yy": 0, "b": [0], "A": [[0]]})["n"] == 600   # un resumen de otra forma no se usa
 mu_a, sd_a = aprende.predice(m1, aprende.vector(feat_alta))
 mu_b, _ = aprende.predice(m1, aprende.vector(feat_baja))
 assert mu_a > 15 and mu_b < -8 and sd_a < 6, (mu_a, mu_b, sd_a)
@@ -316,11 +343,160 @@ clock["t"] += 3 * 3600
 st3 = bot.tick(d2)                                                                               # y las cerradas antiguas se compactan
 viejas = [p for p in st3["positions"] if p.get("compacta")]
 assert viejas and all("events" not in p and "pnl" in p for p in viejas)
+# las dos de la primera hora cerraron hace mas de 2 h: han pasado al archivo sin dejar de contar
+assert st3["archivo"]["n"] == 2 and len(st3["positions"]) == 5 and len(viejas) == 2      # 1 larga abierta, 2 compactas, 2 recien abiertas
+assert sorted(st3["archivo"]["reglas"]) == ["control/rapida_1h", "control/x2_1h"]
+for xn in ("x2_1h", "rapida_1h"):
+    assert bot.stats(st3["positions"], "control", xn, bot.CFG, st3["archivo"])["n"] == 2
+    assert bot.stats(st3["positions"], "control", xn, bot.CFG)["n"] == 1
+assert st3["archivo"]["ej"]["x2_1h"]["n"] == 1 and len(bot.ejemplos(st3["positions"], bot.CFG)["x2_1h"]) == 1
+csvs = os.listdir(os.path.join(d2, "archivo"))
+import csv as _csv
+with open(os.path.join(d2, "archivo", csvs[0]), encoding="utf-8") as f:
+    filas_arch = list(_csv.DictReader(f))
+assert len(csvs) == 1 and len(filas_arch) == 2                                                   # con la hora exacta, sin redondeos
+assert all(r["t_in"] == str(int(T0 + 86400)) and r["t_out"] == str(int(T0 + 86400 + 3600)) for r in filas_arch)
+with open(os.path.join(d2, "operaciones.csv"), encoding="utf-8") as f:
+    assert all(r["t_in"] == str(int(T0 + 86400 + 3660)) for r in _csv.DictReader(f))
+_, st3b = bot.load(d2)                                                                           # y el archivo se guarda y se relee
+assert st3b["archivo"] == st3["archivo"]
+visto_ = {}                                                                                      # la pasada le da a la cuenta lo archivado
+_co = bot.cuenta_opera
+def espia(*a_, **k_):
+    visto_["arch"] = a_[5] if len(a_) > 5 else k_.get("arch")
+    return _co(*a_, **k_)
+bot.cuenta_opera = espia
+clock["t"] += 60
+st3c = bot.tick(d2)
+bot.cuenta_opera = _co
+assert visto_["arch"] and visto_["arch"]["n"] == 2                                               # lo que habia archivado al decidir
+assert st3c["archivo"]["n"] == 4 and len(st3c["positions"]) == 3                                 # y en esta pasada salen las otras dos
+assert bot.stats(st3c["positions"], "control", "x2_1h", bot.CFG, st3c["archivo"])["n"] == 2
 bot.render(d2)
-assert 'id="latido"' in open(os.path.join(d2, "index.html"), encoding="utf-8").read()
+pag2 = open(os.path.join(d2, "index.html"), encoding="utf-8").read()
+assert 'id="latido"' in pag2 and "Lleva 4 pruebas cerradas y 3 abiertas" in pag2 and "Ha aprendido de 4 operaciones" in pag2
+assert pag2.count("2 cerradas, aciertan") == 2 and "1 cerrada," not in pag2                      # el informe cuenta tambien las archivadas
 shutil.rmtree(d2)
 bot.CFG["exits"] = todas
-print("repeticion del control y compactado OK")
+print("repeticion del control, compactado y paso al archivo OK")
+
+# --- archivo: sacar las pruebas antiguas del estado no cambia nada de lo que cuenta ------
+d3 = tempfile.mkdtemp()
+cfga = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True}, "exits": {
+    "x2_1h": {"max_hours": 1.0}, "relampago_15m": {"tp_mult": 1.2, "stop_pct": 10.0, "max_hours": 0.25}}})
+rng2 = random.Random(11)
+AHORA = 9.5 * 3600.0
+def prueba(strat, mint, t_in, xn, ft, y, t_out, abierta=False):
+    q = bot.open_position(strat, mint, {"price": 1.0, "mc": 5e4, "pool": "p" + mint, "symbol": mint}, cfga, t_in, xn, ft)
+    if not abierta:
+        q.update(status="cerrada", reason="tiempo", pnl_pct=y, pnl=y / 10, proceeds=10 + y / 10 + 0.10, n_tx=2,
+                 tp_done=y > 40, t_out=t_out, frac_left=0.0)
+    return q
+def rasgos_al_azar():
+    return {"age": rng2.choice([30, 90, 300, 900]), "mc": rng2.choice([25000, 50000, 100000, 300000]),
+            "liq": rng2.choice([12000, 20000, 40000]), "h1": rng2.choice([-30, -10, 10, 50]), "m5": rng2.choice([-8, 0, 8]),
+            "bs": rng2.choice([0.7, 1.0, 1.5]), "tx": rng2.choice([30, 100, 300]), "turn": rng2.choice([0.1, 0.5, 2]),
+            "dd": rng2.choice([0.5, 0.8, 0.95]), "soc": rng2.choice([0, 1])}
+viejo_ = []
+for i in range(400):
+    ft, t_in = rasgos_al_azar(), i * 80.0
+    for xn in ("x2_1h", "rapida_1h", "relampago_15m"):
+        y = max(-99.0, (20 if ft["bs"] >= 1.2 else -15) + rng2.gauss(0, 25)) * (4 if i % 97 == 0 else 1)   # alguna pasa del tope
+        t_out = t_in + (900 if xn == "relampago_15m" else 3600)
+        viejo_.append(prueba("control", f"m{i}", t_in, xn, ft, y, t_out, abierta=t_out > AHORA))
+        if i % 5 == 0:                                   # la misma compra vista tambien por otro filtro
+            viejo_.append(prueba("basico", f"m{i}", t_in, xn, ft, y, t_out, abierta=t_out > AHORA))
+for i in range(0, 400, 9):                              # pruebas antiguas sin rasgos, y de una salida que ya no existe
+    viejo_.append(prueba("control", f"s{i}", i * 80.0 + 1, "x2_1h", {}, -12.0 + i % 5, i * 80.0 + 3601))
+    viejo_.append(prueba("control", f"q{i}", i * 80.0 + 2, "quitada", rasgos_al_azar(), 33.0, i * 80.0 + 3602))
+de_cuenta = [p for p in viejo_ if p["status"] == "cerrada" and p["exit"] == "rapida_1h" and p["strat"] == "basico"][:6]
+for p in de_cuenta:                                      # seis antiguas son de la cuenta (y tienen gemela en control)
+    p["cuenta"], p["cuenta_esp"] = 8.0, 5.0
+sonda = [rasgos_al_azar() for _ in range(25)]
+def foto(st_):
+    ms = bot.modelos(st_["positions"], cfga, st_.get("archivo"))
+    est_ = bot.cuenta_estado(st_["positions"], cfga)
+    return {"pred": [aprende.predice(ms[xn], aprende.vector(ft)) for xn in sorted(ms) for ft in sonda],
+            "mejor": [aprende.mejor(ms, ft) for ft in sonda],
+            "n_ej": {xn: m["n"] for xn, m in ms.items()},
+            "stats": {(s_, xn): bot.stats(st_["positions"], s_, xn, cfga, st_.get("archivo"))
+                      for s_ in cfga["strategies"] for xn in cfga["exits"]},
+            "frases": bot.aprendido(st_["positions"], cfga, st_.get("archivo")),
+            "cuenta": (est_["saldo"], est_["libre"], len(est_["cerradas"]), len(est_["abiertas"])),
+            "compra": compraria(st_),
+            "cerradas": sum(p["status"] == "cerrada" for p in st_["positions"]) + st_.get("archivo", {}).get("n", 0)}
+def compraria(st_):
+    """Que compraria la cuenta ante las mismas señales nuevas (sobre una copia, sin tocar el estado)."""
+    ps_c = copy.deepcopy([p for p in st_["positions"] if not p.get("cuenta")])
+    sen = []
+    for i_, ft in enumerate(sonda):
+        sn = {"price": 1.0, "mc": 50000, "pool": f"pz{i_}", "symbol": f"z{i_}"}
+        por = {xn: bot.open_position("control", f"z{i_}", sn, cfga, AHORA, xn, ft) for xn in cfga["exits"]}
+        ps_c.extend(por.values())
+        sen.append(("control", f"z{i_}", ft, por))
+    bot.cuenta_opera(sen, ps_c, cfga, AHORA, {}, st_.get("archivo"))
+    return sorted((p["mint"], p["exit"], p["cuenta"], p["cuenta_esp"]) for p in ps_c if p.get("cuenta"))
+def iguales(a, b, tol=1e-6):
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(iguales(a[k], b[k], tol) for k in a)
+    if isinstance(a, (list, tuple)):
+        return len(a) == len(b) and all(iguales(x, y, tol) for x, y in zip(a, b))
+    if isinstance(a, float) and isinstance(b, float):
+        return abs(a - b) <= tol * max(1.0, abs(a), abs(b))
+    return a == b
+sta = {"positions": copy.deepcopy(viejo_), "archivo": {}, "last_tick": AHORA, "notes": {}}
+antes = foto(sta)
+n_antes = len(sta["positions"])
+assert antes["n_ej"]["rapida_1h"] > 300 and antes["stats"][("basico", "x2_1h")]["n"] > 50 and antes["cuenta"][2] == 6
+assert len(antes["compra"]) == 3                                                 # hay señales que la cuenta compra
+# 1) si no se puede escribir el detalle, no se toca nada
+open(os.path.join(d3, "archivo"), "w").close()
+bot.DIAG.clear()
+assert bot.archiva(d3, sta, cfga, AHORA) == 0 and len(sta["positions"]) == n_antes and sta["archivo"] == {}
+assert "archivar las pruebas antiguas" in bot.DIAG["avisos"][0]
+os.remove(os.path.join(d3, "archivo"))
+rara = copy.deepcopy(sta)                                                        # tampoco un dato estropeado: ni rompe ni deja nada a medias
+next(p for p in rara["positions"] if p["status"] == "cerrada" and not p.get("cuenta"))["pnl_pct"] = None
+assert bot.archiva(d3, rara, cfga, AHORA) == 0 and len(rara["positions"]) == n_antes and rara["archivo"] == {}
+assert not os.path.exists(os.path.join(d3, "archivo"))
+# 2) por tandas, como hara el bot: primero lo cerrado hace mas de 6 h, luego mas de 4 h, luego el limite normal de 2 h
+total_arch = 0
+for h_ in (6.0, 4.0, 2.0):
+    total_arch += bot.archiva(d3, sta, bot.deep_merge(cfga, {"archiva_h": h_}), AHORA)
+    sta = json.loads(json.dumps(sta))                    # entre pasada y pasada el estado va a disco y vuelve
+    assert iguales(foto(sta), antes), h_
+assert total_arch > 600 and len(sta["positions"]) == n_antes - total_arch and sta["archivo"]["n"] == total_arch
+sin_arch = dict(sta, archivo={})                                                 # sin lo archivado saldria otra cosa: la prueba mira algo
+assert not iguales(foto(sin_arch)["pred"], antes["pred"]) and foto(sin_arch)["n_ej"] != antes["n_ej"]
+assert "quitada" not in bot.modelos(sta["positions"], cfga, sta["archivo"]) and "control/quitada" in sta["archivo"]["reglas"]
+otra = bot.deep_merge(cfga, {"aprende": {"tope_pct": 99.0}})                     # resumido con otro tope: no se mezcla
+assert bot.modelos(sta["positions"], otra, sta["archivo"])["rapida_1h"]["n"] == len(bot.ejemplos(sta["positions"], otra)["rapida_1h"])
+assert bot.archiva(d3, sta, cfga, AHORA) == 0                                    # no queda nada que archivar
+quedan_ = sta["positions"]
+assert sum(1 for p in quedan_ if p.get("cuenta")) == 6                           # la cuenta nunca se archiva
+assert all(p["status"] == "abierta" or p.get("cuenta") or p["t_out"] >= AHORA - 2 * 3600 for p in quedan_)
+assert any(p["status"] == "abierta" for p in quedan_)
+# 3) de un tiron da lo mismo que por tandas, y el detalle queda en el CSV con la hora exacta
+stb = {"positions": copy.deepcopy(viejo_), "archivo": {}}
+d4 = tempfile.mkdtemp()
+assert bot.archiva(d4, stb, cfga, AHORA) == total_arch and iguales(foto(stb), antes)
+assert iguales(stb["archivo"], sta["archivo"])
+import csv as _csv
+with open(os.path.join(d4, "archivo", os.listdir(os.path.join(d4, "archivo"))[0]), encoding="utf-8") as f:
+    det = list(_csv.DictReader(f))
+ids_fuera = {p["id"] for p in viejo_} - {p["id"] for p in stb["positions"]}
+assert len(det) == total_arch and {r["id"] for r in det} == ids_fuera
+r0 = next(r for r in det if r["id"] == viejo_[0]["id"])
+assert r0["t_in"] == "0" and r0["t_out"] == "3600" and float(r0["f_bs"]) == viejo_[0]["feat"]["bs"]
+assert len({r["id"] for r in det}) == len(det)
+assert abs(float(r0["pnl_pct"]) - viejo_[0]["pnl_pct"]) < 1e-5
+# 4) con el archivado apagado no hace nada
+assert bot.archiva(d4, {"positions": copy.deepcopy(viejo_)}, bot.deep_merge(cfga, {"archiva_h": 0}), AHORA) == 0
+# 5) el estado deja de crecer: lo que queda no depende de cuantas pruebas antiguas hubo
+assert len(json.dumps(sta["archivo"])) < 40000
+shutil.rmtree(d3)
+shutil.rmtree(d4)
+print(f"archivo OK: {total_arch} pruebas antiguas fuera del estado; aprendizaje, cifras y cuenta, idénticos")
 
 # --- un estado del metodo anterior se reinicia; el informe sale ----------------------
 bot.render(d)

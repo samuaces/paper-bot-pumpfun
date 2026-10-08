@@ -20,7 +20,8 @@ Uso (solo Python 3.9+, sin instalar nada):
     python bot.py loop --cada 60  pasadas continuas (--minutos N para parar tras N minutos)
     python bot.py informe         regenera el informe sin consultar nada
 
-Salida en la carpeta --dir (por defecto ./datos): estado.json, operaciones.csv, index.html.
+Salida en la carpeta --dir (por defecto ./datos): estado.json, operaciones.csv (las ultimas), index.html
+y archivo/*.csv (el detalle de las pruebas antiguas, que salen del estado para que no crezca sin fin).
 Para cambiar reglas, crea <dir>/config.json con las claves de CFG que quieras pisar.
 """
 import argparse
@@ -82,6 +83,7 @@ CFG = {
                "margen_pct": 2.0,       # ganancia esperada minima, ya descontados los costes
                "max_horas": 1.0},       # la cuenta solo usa salidas que cierran en este tiempo como mucho
     "aprende": {"sigma0": 45.0, "tau": 10.0, "tau_bias": 10.0, "tope_pct": 150.0},
+    "archiva_h": 2.0,                   # las pruebas cerradas hace mas de estas horas pasan al archivo
     "gt": {"pages_new": 1,        # paginas de pools nuevos cada vez que se consulta
            "new_every": 2,        # se consulta una pasada de cada N: el cupo gratuito es escaso
            "candle_calls": 6,     # tope de monedas a las que se les pide velas en una pasada
@@ -485,6 +487,15 @@ def coste_pct(cfg):
     return 100 * (1 - k) + 100 * 2 * f["tx_eur"] / cfg["stake_eur"]
 
 
+def clave_ej(p):
+    """La misma compra vista por dos filtros es un solo ejemplo: misma moneda, mismo instante, misma salida."""
+    return (p["mint"], int(p["t_in"]), p.get("exit", DEFAULT_EXIT))
+
+
+def resultado_ej(p, cfg):
+    return max(-100.0, min(cfg["aprende"]["tope_pct"], p["pnl_pct"]))
+
+
 def ejemplos(positions, cfg):
     """Operaciones de prueba cerradas, como ejemplos para aprender: {salida: [(rasgos, resultado %)]}."""
     filas, vistos = {xn: [] for xn in cfg["exits"]}, set()
@@ -492,17 +503,19 @@ def ejemplos(positions, cfg):
         xn = p.get("exit", DEFAULT_EXIT)
         if p["status"] != "cerrada" or not p.get("feat") or xn not in filas:
             continue
-        k = (p["mint"], int(p["t_in"]), xn)       # la misma compra vista por dos filtros cuenta una vez
+        k = clave_ej(p)
         if k in vistos:
             continue
         vistos.add(k)
-        filas[xn].append((aprende.vector(p["feat"]), max(-100.0, min(cfg["aprende"]["tope_pct"], p["pnl_pct"]))))
+        filas[xn].append((aprende.vector(p["feat"]), resultado_ej(p, cfg)))
     return filas
 
 
-def modelos(positions, cfg):
+def modelos(positions, cfg, arch=None):
+    """Un modelo por salida, con los ejemplos que siguen en el estado mas los ya archivados (resumidos)."""
     a = cfg["aprende"]
-    return {xn: aprende.fit(rows, -coste_pct(cfg), a["sigma0"], a["tau"], a["tau_bias"])
+    viejos = ej_archivados(arch, cfg)
+    return {xn: aprende.fit(rows, -coste_pct(cfg), a["sigma0"], a["tau"], a["tau_bias"], viejos.get(xn))
             for xn, rows in ejemplos(positions, cfg).items()}
 
 
@@ -521,13 +534,13 @@ def cuenta_estado(positions, cfg):
             "abiertas": abie, "cerradas": cerr}
 
 
-def cuenta_opera(senales, positions, cfg, t, notes):
+def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
     """De las compras de prueba de esta pasada, la cuenta toma las que el aprendizaje ve con ganancia.
     senales: [(filtro, moneda, rasgos, {salida: posicion})]. Devuelve cuantas ha tomado."""
     c = cfg["cuenta"]
     if not c.get("activa") or not senales:
         return 0
-    ms = {xn: m for xn, m in modelos(positions, cfg).items()
+    ms = {xn: m for xn, m in modelos(positions, cfg, arch).items()
           if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9)}
     cands = []
     for strat, mint, feat, por_salida in senales:
@@ -595,7 +608,8 @@ def load(d):
     if os.path.exists(p):
         with open(p, encoding="utf-8") as f:
             cfg = deep_merge(CFG, json.load(f))
-    st = {"v": STATE_V, "watch": {}, "positions": [], "ticks": 0, "started": now(), "last_tick": None, "notes": {}}
+    st = {"v": STATE_V, "watch": {}, "positions": [], "ticks": 0, "started": now(), "last_tick": None, "notes": {},
+          "archivo": {}}
     p = os.path.join(d, "estado.json")
     if os.path.exists(p):
         with open(p, encoding="utf-8") as f:
@@ -624,14 +638,114 @@ def save(d, st):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, separators=(",", ":"))
     os.replace(tmp, os.path.join(d, "estado.json"))
-    cols = ["strat", "exit", "symbol", "mint", "t_in", "t_out", "mc_in", "p_ref", "reason", "pnl", "pnl_pct",
-            "ambiguous", "sin_velas", "cuenta"]
-    with open(os.path.join(d, "operaciones.csv"), "w", newline="", encoding="utf-8") as f:
+    with open(os.path.join(d, "operaciones.csv"), "w", newline="", encoding="utf-8", errors="backslashreplace") as f:
         w = csv.writer(f)
-        w.writerow(cols)
+        w.writerow(COLS_OP)
         for p in st["positions"]:
             if p["status"] == "cerrada":
-                w.writerow([f"{p[c]:.6g}" if isinstance(p.get(c), float) else p.get(c) for c in cols])
+                w.writerow(fila_csv(p, COLS_OP))
+
+
+COLS_OP = ["strat", "exit", "symbol", "mint", "t_in", "t_out", "mc_in", "p_ref", "reason", "pnl", "pnl_pct",
+           "ambiguous", "sin_velas", "cuenta"]
+COLS_ARCH = ["id", "strat", "exit", "symbol", "mint", "t_in", "t_out", "mc_in", "p_dex", "p_ref", "reason", "pnl",
+             "pnl_pct", "tp_done", "ambiguous", "sin_velas", "corregida"] + ["f_" + k for k, _, _ in aprende.FEATS]
+
+
+def fila_csv(p, cols):
+    out = []
+    for c in cols:
+        v = p.get("feat", {}).get(c[2:]) if c.startswith("f_") else p.get(c)
+        if c in ("t_in", "t_out") and v is not None:
+            v = int(v)                              # segundos enteros: con decimales se perdia la hora exacta
+        elif isinstance(v, float):
+            v = f"{v:.8g}"
+        out.append(v)
+    return out
+
+
+def firma_ej(cfg):
+    """Con que tramos y que tope se resumieron los ejemplos archivados: si cambian, el resumen ya no vale."""
+    return f"{[(k, c) for k, c, _ in aprende.FEATS]}|{cfg['aprende']['tope_pct']}"
+
+
+def ej_archivados(arch, cfg):
+    """Resumenes de los ejemplos archivados, por salida; vacio si se hicieron con otros tramos."""
+    arch = arch or {}
+    return arch.get("ej", {}) if arch.get("firma") == firma_ej(cfg) else {}
+
+
+def archiva(d, st, cfg, t):
+    """Saca del estado las pruebas del laboratorio cerradas hace tiempo, para que el archivo de estado
+    no crezca sin fin. No se pierde nada de lo que cuenta:
+      - lo que el bot aprendio de ellas queda resumido en st["archivo"]["ej"] (ver aprende.resumen);
+      - sus cifras por regla (cuantas, medias, aciertos) quedan sumadas en st["archivo"]["reglas"];
+      - el detalle de cada una se anade a <dir>/archivo/AAAAMMDD-HH.csv.
+    Las operaciones de la cuenta no se archivan nunca. Todo se prepara aparte y solo al final, si nada
+    ha fallado, se cambia el estado: un fallo deja las cosas como estaban y se reintenta en otra pasada
+    (el detalle puede entonces quedar repetido en el CSV; la columna id lo delata).
+    Devuelve cuantas ha archivado."""
+    try:
+        horas = float(cfg.get("archiva_h") or 0)
+        if horas <= 0:
+            return 0
+        limite = t - horas * 3600
+        pos = st["positions"]
+        cand = [p for p in pos if p["status"] == "cerrada" and not p.get("cuenta") and p.get("t_out", t) < limite]
+        if not cand:
+            return 0
+        # la misma compra vista por varios filtros cuenta como un solo ejemplo, asi que sus pruebas se
+        # archivan juntas: si alguna sigue viva (salvo que sea de la cuenta, que se queda siempre), esperan
+        idc = {id(p) for p in cand}
+        esperan = {clave_ej(p) for p in pos if id(p) not in idc and not p.get("cuenta")}
+        fuera = [p for p in cand if clave_ej(p) not in esperan]
+        if not fuera:
+            return 0
+        idf = {id(p) for p in fuera}
+        quedan = [p for p in pos if id(p) not in idf]
+        siguen = {clave_ej(p) for p in quedan}      # gemelas de la cuenta: el ejemplo lo sigue aportando ella
+        viejo = st.get("archivo") or {}
+        firma = firma_ej(cfg)
+        if viejo.get("ej") and viejo.get("firma") != firma:
+            aviso("los ejemplos archivados se resumieron con otros tramos: se apartan y se empieza un resumen nuevo")
+        ej = dict(viejo.get("ej", {})) if viejo.get("firma") == firma else {}
+        reglas = {k: dict(v) for k, v in viejo.get("reglas", {}).items()}
+        nuevos, vistos = {}, set()
+        for p in fuera:
+            xn = p.get("exit", DEFAULT_EXIT)
+            k = clave_ej(p)
+            if p.get("feat") and k not in vistos and k not in siguen:
+                vistos.add(k)
+                nuevos.setdefault(xn, []).append((aprende.vector(p["feat"]), resultado_ej(p, cfg)))
+            r = reglas.setdefault(f"{p['strat']}/{xn}", {"n": 0, "s1": 0.0, "s2": 0.0, "x2": 0, "total": 0.0,
+                                                        "peor": p["pnl_pct"], "mejor": p["pnl_pct"]})
+            r["n"] += 1
+            r["s1"] += p["pnl_pct"]
+            r["s2"] += p["pnl_pct"] ** 2
+            r["x2"] += 1 if p["tp_done"] else 0
+            r["total"] += p["pnl"]
+            r["peor"], r["mejor"] = min(r["peor"], p["pnl_pct"]), max(r["mejor"], p["pnl_pct"])
+        for xn, rows in nuevos.items():
+            ej[xn] = aprende.resumen(rows, ej.get(xn))
+        arch = dict(viejo, ej=ej, reglas=reglas, firma=firma, n=viejo.get("n", 0) + len(fuera))
+        if viejo.get("ej") and viejo.get("firma") != firma:
+            arch["ej_apartado"] = viejo["ej"]
+        filas = [fila_csv(p, COLS_ARCH) for p in fuera]
+        carpeta = os.path.join(d, "archivo")
+        os.makedirs(carpeta, exist_ok=True)
+        ruta = os.path.join(carpeta, datetime.fromtimestamp(t, timezone.utc).strftime("%Y%m%d-%H") + ".csv")
+        nuevo = not os.path.exists(ruta) or os.path.getsize(ruta) == 0
+        with open(ruta, "a", newline="", encoding="utf-8", errors="backslashreplace") as f:
+            w = csv.writer(f)
+            if nuevo:
+                w.writerow(COLS_ARCH)
+            w.writerows(filas)
+    except Exception as e:              # pase lo que pase, la pasada sigue y el estado queda como estaba
+        aviso(f"no se pudieron archivar las pruebas antiguas ({type(e).__name__}: {e}); se reintentara")
+        return 0
+    st["archivo"] = arch                # a partir de aqui nada puede fallar
+    pos[:] = quedan
+    return len(fuera)
 
 
 def tick(d):
@@ -713,7 +827,8 @@ def tick(d):
                 del watch[m]
     else:
         aviso("sin foto de mercado: en esta pasada no se evaluan entradas")
-    tomadas = cuenta_opera(senales, positions, cfg, t, notes)
+    tomadas = cuenta_opera(senales, positions, cfg, t, notes, st.get("archivo"))
+    archivadas = archiva(d, st, cfg, t)
 
     dur = time.time() - t0
     st["last_tick"], st["ticks"] = t, st["ticks"] + 1
@@ -733,27 +848,32 @@ def tick(d):
                      "vigilancia_llena": bool(DIAG.get("vigilancia_llena"))}
     save(d, st)
     log(f"pasada {st['ticks']} ({dur:.0f} s): {nuevos} nuevas en vigilancia ({len(watch)} en total), "
-        f"{entradas} entradas ({tomadas} para la cuenta), {len(ab)} abiertas, {len(positions) - len(ab)} cerradas, "
+        f"{entradas} entradas ({tomadas} para la cuenta), {len(ab)} abiertas, "
+        f"{len(positions) - len(ab) + st.get('archivo', {}).get('n', 0)} cerradas ({archivadas} pasan al archivo), "
         f"{calls} monedas revisadas con velas ({n_velas} velas), {pendientes} en cola")
     return st
 
 
 # ---------------------------------------------------------------- informe
 
-def stats(positions, strat, exit_name, cfg):
+def stats(positions, strat, exit_name, cfg, arch=None):
+    """Cifras de una regla (forma de entrar + salida): las pruebas que siguen en el estado mas las archivadas."""
     mias = [p for p in positions if p["strat"] == strat and p.get("exit", DEFAULT_EXIT) == exit_name]
     cl = [p for p in mias if p["status"] == "cerrada"]
-    n = len(cl)
-    out = {"n": n, "abiertas": len(mias) - n}
+    a = (arch or {}).get("reglas", {}).get(f"{strat}/{exit_name}") or {"n": 0, "s1": 0.0, "s2": 0.0, "x2": 0, "total": 0.0}
+    n = len(cl) + a["n"]
+    out = {"n": n, "abiertas": len(mias) - len(cl)}
     if not n:
         return dict(out, x2=0, x2_pct=None, media=None, total=0.0, lo=None, hi=None, veredicto="sin datos")
     r = [p["pnl_pct"] for p in cl]
-    media = sum(r) / n
-    sd = math.sqrt(sum((x - media) ** 2 for x in r) / (n - 1)) if n > 1 else 0.0
+    media = (sum(r) + a["s1"]) / n
+    s2 = sum(x * x for x in r) + a["s2"]            # suma de cuadrados: permite juntar con lo archivado
+    sd = math.sqrt(max(s2 - n * media * media, 0.0) / (n - 1)) if n > 1 else 0.0
     err = 1.96 * sd / math.sqrt(n)
-    x2 = sum(1 for p in cl if p["tp_done"])
-    out.update(x2=x2, x2_pct=100 * x2 / n, media=media, total=sum(p["pnl"] for p in cl),
-               lo=media - err, hi=media + err, peor=min(r), mejor=max(r))
+    x2 = sum(1 for p in cl if p["tp_done"]) + a["x2"]
+    out.update(x2=x2, x2_pct=100 * x2 / n, media=media, total=sum(p["pnl"] for p in cl) + a["total"],
+               lo=media - err, hi=media + err, peor=min(r + ([a["peor"]] if a["n"] else [])),
+               mejor=max(r + ([a["mejor"]] if a["n"] else [])))
     if n < cfg["min_trades_verdict"]:
         out["veredicto"] = f"faltan {cfg['min_trades_verdict'] - n} operaciones"
     elif out["lo"] > 0:
@@ -915,25 +1035,27 @@ def hhmm(ts):
     return fmt_t(ts)[6:11]
 
 
-def aprendido(pos, cfg):
+def aprendido(pos, cfg, arch=None):
     """Frases, en llano, sobre lo que el bot ha aprendido hasta ahora."""
     ej = ejemplos(pos, cfg)
-    total = sum(len(v) for v in ej.values())
+    viejos = {xn: r for xn, r in ej_archivados(arch, cfg).items() if xn in ej}
+    cuantos = {xn: len(rows) + viejos.get(xn, {}).get("n", 0) for xn, rows in ej.items()}
+    total = sum(cuantos.values())
     if not total:
         return ["Todavía no ha cerrado ninguna operación de prueba de la que aprender. Hasta entonces las compras "
                 "de la cuenta son tanteos: parte de que, sin ventaja, cada operación pierde lo que cuestan las comisiones "
                 f"(un {es(coste_pct(cfg), 1, False)} %)."]
     out = [f"Ha aprendido de {total} operaciones de prueba cerradas."]
     for xn, rows in ej.items():
-        if rows:
-            media = sum(y for _, y in rows) / len(rows)
-            out.append(f"Salida {SALIDAS.get(xn, xn).lower()}: {len(rows)} ejemplos, resultado medio {es(media)} %.")
-    xn = max(ej, key=lambda k: len(ej[k]))
-    if len(ej[xn]) < 30:
+        if cuantos[xn]:
+            media = (sum(y for _, y in rows) + viejos.get(xn, {}).get("sy", 0.0)) / cuantos[xn]
+            out.append(f"Salida {SALIDAS.get(xn, xn).lower()}: {cuantos[xn]} ejemplos, resultado medio {es(media)} %.")
+    xn = max(ej, key=lambda k: cuantos[k])
+    if cuantos[xn] < 30:
         out.append("Con menos de 30 ejemplos por salida aún no distingue qué monedas van mejor; sigue probando.")
         return out
     a = cfg["aprende"]
-    m = aprende.fit(ej[xn], -coste_pct(cfg), a["sigma0"], a["tau"], a["tau_bias"])
+    m = aprende.fit(ej[xn], -coste_pct(cfg), a["sigma0"], a["tau"], a["tau_bias"], viejos.get(xn))
     fuertes = sorted(aprende.efectos(m), key=lambda x: -abs(x[1]) / x[2])[:4]
     for nombre, efecto, sd in fuertes:
         if abs(efecto) < 1:
@@ -1028,7 +1150,7 @@ def render(d):
     filas = ""
     for s in cfg["strategies"]:
         for xn in cfg["exits"]:
-            x = stats(pos, s, xn, cfg)
+            x = stats(pos, s, xn, cfg, st.get("archivo"))
             c = "" if x["media"] is None else color(x["media"])
             if x["n"]:
                 det = (f"{x['n']} cerrada{'s' if x['n'] != 1 else ''}, aciertan {x['x2_pct']:.0f} % "
@@ -1039,7 +1161,7 @@ def render(d):
                       f"<span class='r {c}'>{es(x['media']) + ' %' if x['n'] else '–'}</span>"
                       f"<span class='d'>{e(exit_label(cfg, xn))}. {det}</span></li>")
     n_lab_ab = sum(1 for p in pos if p["status"] == "abierta")
-    n_lab_ce = len(pos) - n_lab_ab
+    n_lab_ce = len(pos) - n_lab_ab + st.get("archivo", {}).get("n", 0)
 
     # --- salud
     hl = health(st, t)
@@ -1088,7 +1210,7 @@ def render(d):
 <p class="g s">El porcentaje es cuánto se ha movido el precio desde la compra, sin descontar costes.</p></section>
 <section><h2>Monedas en prueba ahora</h2><ul class="act sinhora">{vivas}</ul>
 <p class="g s" style="margin-top:8px">Las {len(en_prueba)} monedas que el bot tiene compradas de mentira en el laboratorio (se muestran las 20 últimas), con su precio de ahora frente al de entrada.</p></section>
-<section><h2>Lo que va aprendiendo</h2><ul class="salud g">{''.join(f'<li>{e(x)}</li>' for x in aprendido(pos, cfg))}</ul></section>
+<section><h2>Lo que va aprendiendo</h2><ul class="salud g">{''.join(f'<li>{e(x)}</li>' for x in aprendido(pos, cfg, st.get("archivo")))}</ul></section>
 <section><details><summary>Laboratorio: las pruebas con las que aprende</summary>
 <p class="g s" style="margin-bottom:10px">Aparte de la cuenta, el bot prueba muchas más monedas con {es(cfg['stake_eur'], 0, False)} € de mentira cada una y todas las salidas a la vez. De ahí salen los ejemplos de los que aprende. Lleva {n_lab_ce} pruebas cerradas y {n_lab_ab} abiertas.</p>
 <h2>Resultado medio de cada regla</h2><ul class="act sinhora">{filas}</ul>
@@ -1100,7 +1222,7 @@ def render(d):
 <script>{JS_PANEL}</script>
 </body></html>"""
     os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
+    with open(os.path.join(d, "index.html"), "w", encoding="utf-8", errors="replace") as f:
         f.write(page)
 
 
