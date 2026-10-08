@@ -278,12 +278,13 @@ t_b = sum(aprende.decide({"a": m1}, feat_baja, f"k{i}")[1] > 2 for i in range(30
 assert t_a > 0.97 and t_b < 0.03, (t_a, t_b)                                      # tras aprender: compra lo bueno, evita lo malo
 assert aprende.decide({"a": m1}, feat_alta, "igual") == aprende.decide({"a": m1}, feat_alta, "igual")
 assert aprende.mejor({"a": m0, "b": m1}, feat_alta)[0] == "b" and aprende.mejor({"a": m0, "b": m1}, feat_baja)[0] == "a"
+assert aprende.mejor({"a": m0, "b": m1}, feat_baja, 1.64)[0] == "b"    # restando el margen de error gana lo conocido (-15 seguro)
 top = max(aprende.efectos(m1), key=lambda x: abs(x[1]) / x[2])
 assert "compras que ventas" in top[0] or "ventas que compras" in top[0]
 print(f"aprendizaje OK: sin datos compra el {tomadas0:.0%} de las señales; con 600 ejemplos, {t_a:.0%} de las buenas y {t_b:.0%} de las malas")
 
 # --- la cuenta de 30 euros: huecos, importes y resultado -------------------------------
-cfgc = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": -1e9, "min_ejemplos": 0}})
+cfgc = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": -1e9, "min_ejemplos": 0, "confianza_z": 0}})
 ps_ = []
 def senal(mint):
     sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
@@ -338,6 +339,20 @@ def senal3(mint):
     return ("control", mint, feat_alta, por)
 assert bot.cuenta_opera([senal3("OTRA1")], h2_, pocos, 999, {}) == 0
 assert bot.cuenta_opera([senal3("OTRA2")], h2_, bot.deep_merge(cfg2, {"cuenta": {"min_ejemplos": 240}}), 999, {}) == 1
+# una estimacion positiva pero imprecisa no basta: debe seguir siendo ganancia tras restarle su margen de error
+dudosa = [p for p in copy.deepcopy(hist) if not p.pop("cuenta", None) and p["status"] == "cerrada"]
+for i_, p in enumerate(q for q in dudosa if q["feat"] == feat_alta):   # los buenos, ahora muy dispersos: +10 de media, ±60
+    p["pnl_pct"] = 10.0 + (60.0 if i_ % 2 else -60.0)
+def senal4(mint, lista):
+    sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
+    por = {xn: bot.open_position("control", mint, sn, cfg2, 999, xn, feat_alta) for xn in cfg2["exits"]}
+    lista.extend(por.values())
+    return ("control", mint, feat_alta, por)
+nt4 = {}
+assert bot.cuenta_opera([senal4("DUDA", dudosa)], dudosa, cfg2, 999, nt4) == 0
+ro4 = nt4["cuenta_ronda"]
+assert ro4["mejor"] > cfg2["cuenta"]["margen_pct"] and ro4["mejor"] - ro4["error"] <= cfg2["cuenta"]["margen_pct"]   # esperado positivo, pero no seguro
+assert bot.cuenta_opera([senal4("DUDA2", dudosa)], dudosa, bot.deep_merge(cfg2, {"cuenta": {"confianza_z": 0}}), 999, {}) == 1
 assert [p["mint"] for p in elegida] == ["BUENA"] and elegida[0]["exit"] == "rapida_1h" and elegida[0]["cuenta_esp"] > 15
 cfgn = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": 1e9}})
 assert bot.cuenta_opera([senal("H")], ps_, cfgn, 900, {}) == 0                                      # si nada supera el margen, no compra

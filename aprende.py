@@ -7,9 +7,14 @@ salida, un modelo sencillo (regresion lineal bayesiana) que estima el resultado 
 compra nueva segun sus rasgos, junto con cuanta incertidumbre tiene esa estimacion.
 
 La exploracion (probar de todo para tener ejemplos) la hace el laboratorio, que no gasta saldo.
-La cuenta solo aprovecha: compra cuando el resultado esperado supera el margen pedido, y elige la
-salida con mejor resultado esperado. Parte de la creencia de que, sin ventaja, una operacion
-pierde lo que cuestan las comisiones, asi que sin ejemplos no compra.
+La cuenta solo aprovecha: compra cuando el resultado esperado supera el margen pedido incluso
+despues de restarle su margen de error, y elige la salida que mejor queda asi. Parte de la creencia
+de que, sin ventaja, una operacion pierde lo que cuestan las comisiones, asi que sin ejemplos no compra.
+
+Por que restar el margen de error: la cuenta valora cientos de monedas, y una estimacion imprecisa
+sale positiva por pura casualidad en unas cuantas. Comprar "lo que salga positivo" es comprar esas
+casualidades (paso el primer dia: 15 ventas, media -9 %). Exigir que siga positiva tras restar el
+margen de error deja fuera la casualidad.
 
 Solo usa la biblioteca estandar de Python.
 """
@@ -174,12 +179,13 @@ def decide(models, feat, key):
     return best
 
 
-def mejor(models, feat):
-    """La salida con mejor resultado esperado para unos rasgos: (salida, esperado, incertidumbre)."""
+def mejor(models, feat, z=0.0):
+    """La mejor salida para unos rasgos: (salida, esperado, incertidumbre). Con z > 0 gana la que mejor
+    queda tras restarle z veces su incertidumbre (su resultado "seguro"), no la de mayor esperado."""
     idx, best = vector(feat), None
     for name, m in models.items():
         mu, sd = predice(m, idx)
-        if best is None or mu > best[1]:
+        if best is None or mu - z * sd > best[1] - z * best[2]:
             best = (name, mu, sd)
     return best
 

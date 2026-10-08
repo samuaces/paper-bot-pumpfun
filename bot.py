@@ -85,7 +85,9 @@ CFG = {
     # la cuenta: un saldo unico que solo compra lo que el aprendizaje ve con ganancia tras costes.
     # No tantea: de probar cosas se encarga el laboratorio, que no gasta saldo.
     "cuenta": {"activa": True, "saldo_eur": 30.0, "huecos": 3, "min_compra_eur": 3.0,
-               "margen_pct": 2.0,       # ganancia esperada minima, ya descontados los costes
+               "margen_pct": 2.0,       # ganancia minima, ya descontados los costes...
+               "confianza_z": 1.64,     # ...que debe quedar tras restar este numero de veces la incertidumbre de la
+                                        # estimacion (1,64 = un 95 % de seguridad). Con 0 bastaria el valor esperado
                "min_ejemplos": 50,      # no usa una salida hasta haber visto cerrarse tantas pruebas con ella
                "max_horas": 1.0},       # la cuenta solo usa salidas que cierran en este tiempo como mucho
     "aprende": {"sigma0": 45.0, "tau": 10.0, "tau_bias": 10.0, "tope_pct": 150.0},
@@ -550,13 +552,16 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
         return 0
     ms = {xn: m for xn, m in modelos(positions, cfg, arch).items()
           if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9) and m["n"] >= c.get("min_ejemplos", 0)}
-    cands, mejor_esp = [], None
+    cands, top, z = [], None, c.get("confianza_z", 0.0)
     for strat, mint, feat, por_salida in senales:
-        d = aprende.mejor({xn: m for xn, m in ms.items() if xn in por_salida}, feat)
-        if d:
-            mejor_esp = d[1] if mejor_esp is None else max(mejor_esp, d[1])
-        if d and d[1] > c["margen_pct"]:        # solo si lo aprendido da ganancia esperada tras costes
-            cands.append((d[1], d[1], d[0], strat, mint, por_salida))
+        d = aprende.mejor({xn: m for xn, m in ms.items() if xn in por_salida}, feat, z)
+        if not d:
+            continue
+        seguro = d[1] - z * d[2]                # lo esperado menos su margen de error
+        if top is None or seguro > top[0]:
+            top = (seguro, d[1], z * d[2])
+        if seguro > c["margen_pct"]:            # solo si, aun asi, queda ganancia tras costes
+            cands.append((seguro, d[1], d[0], strat, mint, por_salida))
     cands.sort(key=lambda x: -x[0])
     tomadas = 0
     for val, mu, xn, strat, mint, por_salida in cands:
@@ -574,7 +579,8 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
     notes["senales"] = notes.get("senales", 0) + len(senales)
     notes["tomadas"] = notes.get("tomadas", 0) + tomadas
     notes["cuenta_ronda"] = {"t": int(t), "n": len(senales), "buenas": len(cands), "tomadas": tomadas,
-                             "mejor": None if mejor_esp is None else round(mejor_esp, 1)}
+                             "mejor": None if top is None else round(top[1], 1),
+                             "error": None if top is None else round(top[2], 1)}
     return tomadas
 
 
@@ -1122,7 +1128,7 @@ def render(d):
                        f"con la salida {e(nom_s(p).lower())}: {es(100 * g / p['cuenta'])} % sobre {es(p['cuenta'], 2, False)} €.</span></li>"))
     ev.sort(key=lambda x: (-x[0], -x[1]))
     act_cuenta = "".join(x[2] for x in ev[:40]) or ("<li class='vacio'>La cuenta todavía no ha comprado nada. Compra cuando, entre las "
-                                                    "monedas que el bot prueba, lo aprendido apunta a ganancia después de costes.</li>")
+                                                    "monedas que el bot prueba, lo aprendido apunta con seguridad a ganancia después de costes.</li>")
     cartera = ""
     for p in sorted(ct["abiertas"], key=lambda p: -p["t_in"]):
         mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
@@ -1145,8 +1151,13 @@ def render(d):
             ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}, pero aún no compra: espera a haber visto cerrarse "
                      f"{cfg['cuenta'].get('min_ejemplos', 0)} pruebas con una misma salida para fiarse de lo aprendido.")
         else:
-            ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}: a la mejor, lo aprendido le daba un resultado esperado de "
-                     f"{es(ro['mejor'])} %. La cuenta solo compra por encima de {es(cfg['cuenta']['margen_pct'], 0)} %, así que no compró.")
+            if ro.get("error"):
+                ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}: a la mejor, lo aprendido le daba un resultado esperado de "
+                         f"{es(ro['mejor'])} %, con un margen de error de ±{es(ro['error'], 1, False)} puntos. La cuenta solo compra "
+                         f"si, aun restando ese margen, queda por encima de {es(cfg['cuenta']['margen_pct'], 0)} %, así que no compró.")
+            else:
+                ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}: a la mejor, lo aprendido le daba un resultado esperado de "
+                         f"{es(ro['mejor'])} %. La cuenta solo compra por encima de {es(cfg['cuenta']['margen_pct'], 0)} %, así que no compró.")
 
     # --- monedas en prueba ahora (laboratorio), una linea por moneda
     en_prueba, vivas = {}, ""
