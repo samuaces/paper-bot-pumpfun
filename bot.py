@@ -382,11 +382,12 @@ def advance(pos, bars, until, cfg, ratios=None):
         if until < em + 60:
             return
         c = next((b for b in bars if b[0] == em), None)
-        if c:                                       # precio de entrada: cierre de ese minuto, misma fuente que las salidas
-            if ratios is not None:
-                ratios.append(round(c[4] / pos["p_dex"], 3))
-            pos["p_ref"] = pos["last_price"] = c[4]
-            pos["units"] = _units(pos["stake"], c[4], cfg)
+        if c:                                       # precio de entrada: el peor (mas caro) entre la foto con la que
+            if ratios is not None:                  # se decidio y el cierre de ese minuto. Asi una moneda que se hunde
+                ratios.append(round(c[4] / pos["p_dex"], 3))    # justo al comprarla cuenta como la perdida que es.
+            pos["p_ref"] = max(pos["p_dex"], c[4])
+            pos["last_price"] = c[4]
+            pos["units"] = _units(pos["stake"], pos["p_ref"], cfg)
         pos["rebased"] = True
         pos["last_check"] = em + 60
     deadline = pos["t_in"] + exit_cfg(cfg, pos.get("exit"))["max_hours"] * 3600
@@ -401,6 +402,25 @@ def advance(pos, bars, until, cfg, ratios=None):
     if until >= deadline:
         _sell(pos, pos["frac_left"], pos["last_price"], 0.0, cfg, deadline,
               "objetivo_y_tiempo" if pos["tp_done"] else "tiempo")
+
+
+def corrige_entradas(positions, cfg):
+    """Arreglo de operaciones apuntadas antes de la regla del peor precio de entrada: si el precio de
+    entrada quedo muy por debajo del de la foto, la moneda se hundio en el minuto de la compra y la
+    perdida real fue casi total. Se recalcula una sola vez. Devuelve cuantas ha corregido."""
+    n = 0
+    for p in positions:
+        if p.get("corregida") or not p.get("rebased") or not p.get("p_dex") or p["p_ref"] >= 0.8 * p["p_dex"]:
+            continue
+        hundido = p["p_ref"]
+        p["corregida"], p["p_ref"] = True, p["p_dex"]
+        p["units"] = _units(p["stake"], p["p_dex"], cfg)
+        if p["status"] == "cerrada":            # se vendio en el stop, pero a precio ya hundido
+            ex = exit_cfg(cfg, p.get("exit"))
+            p.update(status="abierta", frac_left=1.0, proceeds=0.0, n_tx=1, tp_done=False, events=[])
+            _sell(p, 1.0, hundido, ex["stop_extra_slippage_pct"], cfg, p["t_out"], "stop")
+        n += 1
+    return n
 
 
 def refresh_exits(positions, snap, cfg, t, notes):
@@ -641,6 +661,7 @@ def tick(d):
             p["last_seen"], p["now_price"] = t, s["price"]
         elif ok and t - p["last_seen"] > 2 * 3600:   # desaparecida: se da por perdido lo que quedaba
             _sell(p, p["frac_left"], 0.0, 0.0, cfg, t, "sin_datos")
+    notes["corregidas"] = notes.get("corregidas", 0) + corrige_entradas(positions, cfg)
     calls, pendientes, n_velas, atraso = refresh_exits(positions, snap, cfg, t, notes)
 
     # 2) entradas de prueba (el laboratorio) y, de entre ellas, las que toma la cuenta
@@ -759,7 +780,8 @@ def health(st, t):
     errores = [x for x in n.get("errores", []) if x[0] > t - 3600]
     if errores:
         probs.append(f"{len(errores)} pasadas han fallado en la última hora ({errores[-1][1][:80]})")
-    return {"pasadas_hora": len(hora), "dur": statistics.median(durs[-15:]) if durs else None,
+    raros = sum(1 for r in ratios if not (0.8 <= r <= 1.25))
+    return {"raros": raros, "pasadas_hora": len(hora), "dur": statistics.median(durs[-15:]) if durs else None,
             "revisado_hasta": diag.get("revisado_hasta"), "pendientes": diag.get("pendientes", 0),
             "avisos_hora": len(avisos), "ultimos_avisos": [a[1] for a in avisos[-3:]],
             "ratio_med": med, "ratio_n": len(ratios), "problemas": probs}
@@ -964,6 +986,9 @@ def render(d):
     if hl["ratio_med"] is not None:
         lineas.append(f"Las dos fuentes de precios coinciden: diferencia típica de {es(abs(hl['ratio_med'] - 1) * 100, 1, False)} % "
                       f"en {hl['ratio_n']} compras comprobadas.")
+    if hl["raros"]:
+        lineas.append(f"En {hl['raros']} compra{'s' if hl['raros'] != 1 else ''} el precio cambió de golpe en el mismo minuto; "
+                      f"se apunta siempre el peor precio de entrada.")
     lineas.append(f"Avisos en la última hora: {hl['avisos_hora']}."
                   + (" Últimos: " + "; ".join(e(a[:90]) for a in hl["ultimos_avisos"]) + "." if hl["ultimos_avisos"] else ""))
     for pb in hl["problemas"]:

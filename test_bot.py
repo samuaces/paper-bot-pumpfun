@@ -182,6 +182,18 @@ assert r5["reason"] == "tiempo" and r5["t_out"] == 3630 and abs(r5["pnl"] - (10 
 r6 = bot.open_position("basico", "T", snap, bot.CFG, 30, "rapida_1h")    # la vela del minuto de entrada no dispara salidas
 bot.advance(r6, [(0, 1, 9, 0.1, 1.0)], 120, bot.CFG)
 assert r6["status"] == "abierta" and r6["last_check"] == 120
+r7 = bot.open_position("basico", "T", snap, bot.CFG, 30, "rapida_1h")    # se hunde un 94 % en el minuto de la compra
+bot.advance(r7, [(0, 1, 1, 0.05, 0.057), (60, 0.057, 0.06, 0.04, 0.05)], 120, bot.CFG)
+assert r7["p_ref"] == 1.0 and r7["reason"] == "stop" and abs(r7["pnl"] - (10 * k * 0.057 * 0.95 - 10 - 0.10)) < 1e-6
+r8 = bot.open_position("basico", "T", snap, bot.CFG, 30, "rapida_1h")    # sube en el minuto de la compra: entra mas caro
+bot.advance(r8, [(0, 1, 1.2, 1, 1.1)], 120, bot.CFG)
+assert abs(r8["p_ref"] - 1.1) < 1e-12 and r8["status"] == "abierta"
+r9 = bot.open_position("basico", "T", snap, bot.CFG, 30, "rapida_1h")    # apuntada con la regla antigua: se corrige una vez
+r9.update(rebased=True, p_ref=0.057, units=bot._units(10, 0.057, bot.CFG))
+bot._sell(r9, 1.0, 0.057 * 0.8, 5.0, bot.CFG, 120, "stop")
+assert r9["pnl_pct"] > -30 and bot.corrige_entradas([r9], bot.CFG) == 1 and bot.corrige_entradas([r9], bot.CFG) == 0
+assert r9["status"] == "cerrada" and abs(r9["pnl"] - r7["pnl"]) < 1e-6 and r9["t_out"] == 120
+print(f"moneda que se hunde al comprarla OK: {r7['pnl_pct']:+.1f}% (antes se apuntaba {-28.4:+.1f}%)")
 print(f"salida rapida OK: objetivo {r1['pnl_pct']:+.1f}%, tiempo {r2['pnl_pct']:+.1f}%, stop {r3['pnl_pct']:+.1f}%")
 for xn in ("x2_24h", "rapida_1h"):
     print(f"  {bot.exit_label(bot.CFG, xn)}: necesita {bot.breakeven_rate(bot.CFG, xn):.0f}% de aciertos")
