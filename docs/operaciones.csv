@@ -1,1 +1,4 @@
 strat,exit,symbol,mint,t_in,t_out,mc_in,reason,pnl,pnl_pct,ambiguous
+control,,TTK,BjeTZRw9eruV2z5NqrEMMxzkcXNGkJ2RTmgGVJoxh6Ww,1791437468.7277,1791440400,23241.0,stop,-3.7501,-37.5006,False
+basico,rapida_1h,$BITFOOTS,agYKZgcBE2XUzTypkkdJqvwPbu7k5CUZjA6Cm3jpump,1791442454.7666,1791442860,45045.0,stop,-2.8429,-28.4292,False
+impulso,rapida_1h,$BITFOOTS,agYKZgcBE2XUzTypkkdJqvwPbu7k5CUZjA6Cm3jpump,1791442454.7666,1791442860,45045.0,stop,-2.8429,-28.4292,False
