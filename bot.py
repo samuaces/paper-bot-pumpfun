@@ -48,10 +48,10 @@ CFG = {
         "control": {"age_min": [60, 120], "one_in": 4,
                     "sources": ["gt_nuevos", "pump_recientes"]},
         # filtros publicos tipicos
-        "basico": {"age_min": [30, 1440], "mc_min": 20000, "liq_min": 10000,
+        "basico": {"age_min": [30, 1440], "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
                    "need_x": True, "need_tg": True},
         # basico + senales de que sigue entrando gente
-        "impulso": {"age_min": [30, 1440], "mc_min": 20000, "liq_min": 10000,
+        "impulso": {"age_min": [30, 1440], "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
                     "need_x": True, "need_tg": True,
                     "chg_h1_min": 0.0, "chg_m5_min": -10.0, "buy_sell_h1_min": 1.2,
                     "txns_h1_min": 60, "vol_h1_min": 3000, "mc_vs_max_min": 0.5},
@@ -287,7 +287,7 @@ def wants(strat, s, w, cfg, t):
         if w.get("source") not in r["sources"]:
             return False
         return int(hashlib.sha256(w["mint"].encode()).hexdigest(), 16) % int(r["one_in"]) == 0
-    if s["mc"] < r["mc_min"] or s["liq"] < r["liq_min"]:
+    if s["mc"] < r["mc_min"] or s["mc"] > r.get("mc_max", float("inf")) or s["liq"] < r["liq_min"]:
         return False
     if r.get("need_x") and not (s["x"] or w.get("x")):
         return False
