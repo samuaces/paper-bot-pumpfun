@@ -56,8 +56,9 @@ CFG = {
     "universe": {"dex": "pumpswap", "max_pair_age_h": 24.0, "max_watch": 3000,
                  "prune_after_min": 120},   # pasada esa edad, se deja de vigilar lo que ya no puede cumplir
     "strategies": {
-        # compra sin filtro una de cada N graduadas, una hora despues de graduarse
-        "control": {"age_min": [60, 120], "one_in": 4,
+        # compra a ciegas una de cada N graduadas, una hora despues de graduarse; solo se le exige el
+        # mismo tamano minimo que a los filtros, para no llenarlo de monedas ya muertas
+        "control": {"age_min": [60, 120], "one_in": 4, "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
                     "sources": ["gt_nuevos", "pump_recientes"]},
         # filtros publicos tipicos
         "basico": {"age_min": [30, 1440], "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
@@ -106,7 +107,8 @@ def exit_cfg(cfg, name):
 def exit_label(cfg, name):
     ex = exit_cfg(cfg, name)
     h = ex["max_hours"]
-    return f"x{ex['tp_mult']:g} · −{ex['stop_pct']:g}% · " + (f"{h:g} h" if h >= 1 else f"{h * 60:g} min")
+    txt = f"x{ex['tp_mult']:g}, stop −{ex['stop_pct']:g} %, " + (f"{h:g} h" if h >= 1 else f"{h * 60:g} min")
+    return txt.replace(".", ",")
 
 
 def http_json(url, tries=3):
@@ -408,11 +410,13 @@ def wants(strat, s, w, cfg, t):
     age = (t - s["created"]) / 60.0
     if not (r["age_min"][0] <= age <= r["age_min"][1]):
         return False
-    if strat == "control":
+    if strat == "control":              # a ciegas: una de cada N, solo con el mismo tamano minimo que los filtros
         if w.get("source") not in r["sources"]:
             return False
-        return int(hashlib.sha256(w["mint"].encode()).hexdigest(), 16) % int(r["one_in"]) == 0
-    if s["mc"] < r["mc_min"] or s["mc"] > r.get("mc_max", float("inf")) or s["liq"] < r["liq_min"]:
+        if int(hashlib.sha256(w["mint"].encode()).hexdigest(), 16) % int(r["one_in"]) != 0:
+            return False
+    if (s["mc"] < r.get("mc_min", 0) or s["mc"] > r.get("mc_max", float("inf"))
+            or s["liq"] < r.get("liq_min", 0)):
         return False
     if r.get("need_x") and not (s["x"] or w.get("x")):
         return False
@@ -640,23 +644,68 @@ def pct(v, signo=True):
     return "–" if v is None else (f"{v:+.1f}%" if signo else f"{v:.0f}%")
 
 
-NOMBRES = {"control": "Control (sin filtro)", "basico": "Filtro básico", "impulso": "Filtro de impulso"}
+NOMBRES = {"control": "Control, a ciegas", "basico": "Filtro básico", "impulso": "Filtro de impulso"}
+SALIDAS = {"x2_24h": "Larga", "x2_1h": "x2 rápida", "rapida_1h": "Rápida", "relampago_15m": "Relámpago"}
+MOTIVOS = {"objetivo": "objetivo", "stop": "stop", "tiempo": "fin de plazo", "sin_datos": "desaparecida",
+           "stop_tras_objetivo": "stop tras objetivo", "objetivo_y_tiempo": "objetivo y fin de plazo"}
 
+# Cuaderno de operaciones: una sola columna, alineada a la izquierda; lo que manda es la lista de actividad.
 CSS = """
-:root{--bg:#f3f5f4;--card:#fff;--fg:#17201c;--mut:#5d6b65;--line:#d9dfdc;--up:#0b7a53;--down:#b3372c;--acc:#1f5f8b}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111614;--card:#1a211e;--fg:#e6ece9;--mut:#93a39c;--line:#2c3632;--up:#4fd1a1;--down:#f08a7e;--acc:#7fb8e0;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#111614;--card:#1a211e;--fg:#e6ece9;--mut:#93a39c;--line:#2c3632;--up:#4fd1a1;--down:#f08a7e;--acc:#7fb8e0;color-scheme:dark}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:920px;margin:0 auto;padding-inline:16px;padding-block:20px 40px;display:grid;gap:20px}
-h1{font-size:1.35rem;margin:0}h2{font-size:1rem;margin:0 0 8px}p{margin:0}
-.mut{color:var(--mut);font-size:.87rem}.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
-.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
-th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-th:first-child,td:first-child{text-align:left}th{font-size:.78rem;color:var(--mut);font-weight:600;letter-spacing:.03em;text-transform:uppercase}
-.up{color:var(--up)}.down{color:var(--down)}.tag{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--line);font-size:.8rem}
-.ok{border-color:var(--up);color:var(--up)}.mal{border-color:var(--down);color:var(--down)}
-ul{margin:6px 0 0;padding-left:18px}
+:root{--papel:#f5f6f8;--hoja:#ffffff;--tinta:#1b2430;--gris:#66707d;--raya:#dde1e7;--marca:#2f4bd8;--gana:#0e8a5f;--pierde:#c2412d;--aviso:#9a5b00;
+--f:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--papel:#12161c;--hoja:#1a2028;--tinta:#e8ecf1;--gris:#98a2af;--raya:#2a323d;--marca:#8ea2ff;--gana:#45c493;--pierde:#f0836f;--aviso:#e0a84a;color-scheme:dark}}
+:root[data-theme="dark"]{--papel:#12161c;--hoja:#1a2028;--tinta:#e8ecf1;--gris:#98a2af;--raya:#2a323d;--marca:#8ea2ff;--gana:#45c493;--pierde:#f0836f;--aviso:#e0a84a;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--papel);color:var(--tinta);font:16px/1.45 var(--f);-webkit-text-size-adjust:100%}
+main{max-width:700px;margin:0 auto;padding-inline:18px;padding-block:22px 48px;display:flex;flex-direction:column;gap:30px}
+h1{font-size:1.5rem;line-height:1.15;margin:0;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:0 0 10px;font-weight:700}
+p{margin:0}.g{color:var(--gris)}.s{font-size:.875rem}
+.gana{color:var(--gana)}.pierde{color:var(--pierde)}
+.cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.estado{display:inline-flex;align-items:center;gap:7px;font-size:.875rem;font-weight:500;padding:5px 11px;border-radius:999px;background:var(--hoja);border:1px solid var(--raya)}
+.estado i{width:9px;height:9px;border-radius:50%;background:var(--gana)}
+.estado.mal i{background:var(--pierde)}.estado.mal{color:var(--pierde)}
+.cifras{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--hoja);border:1px solid var(--raya);border-radius:10px}
+.cifras div{padding:13px 14px;min-width:0}.cifras div+div{border-left:1px solid var(--raya)}
+.cifras b{display:block;font-size:1.45rem;line-height:1.2;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cifras span{font-size:.8125rem;color:var(--gris)}
+.act{list-style:none;margin:0;padding:0;background:var(--hoja);border:1px solid var(--raya);border-radius:10px}
+.act li{display:grid;grid-template-columns:3.1rem minmax(0,1fr) auto;column-gap:10px;align-items:baseline;padding:11px 14px}
+.act li+li{border-top:1px solid var(--raya)}
+.act time{color:var(--gris);font-size:.875rem;font-variant-numeric:tabular-nums}
+.act .q{font-weight:700;overflow-wrap:anywhere}
+.act .q em{font-style:normal;font-weight:500;color:var(--gris);margin-right:6px}
+.act.sinhora .q em{margin:0}
+.act .q em.c{color:var(--marca)}
+.act .r{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.act .d{grid-column:2/4;color:var(--gris);font-size:.875rem}
+.act.sinhora li{grid-template-columns:minmax(0,1fr) auto}.act.sinhora .d{grid-column:1/3}
+.vacio{padding:16px 14px;color:var(--gris)}
+.tabla{overflow-x:auto;background:var(--hoja);border:1px solid var(--raya);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.9rem}
+th,td{text-align:right;padding:9px 12px;white-space:nowrap}
+tr+tr td{border-top:1px solid var(--raya)}
+th{font-size:.8125rem;color:var(--gris);font-weight:500;border-bottom:1px solid var(--raya)}
+th:first-child,td:first-child{text-align:left}td:first-child{font-weight:700}
+td.t{text-align:left;font-weight:400}
+ul.salud{margin:0;padding:14px 14px 14px 32px;background:var(--hoja);border:1px solid var(--raya);border-radius:10px;font-size:.9rem}
+ul.salud li+li{margin-top:5px}
+details summary{cursor:pointer;font-weight:700;font-size:1.05rem;margin-bottom:10px}
+details summary:focus-visible,a:focus-visible{outline:2px solid var(--marca);outline-offset:3px}
+@media (max-width:430px){.cifras b{font-size:1.2rem}.act li{grid-template-columns:2.9rem minmax(0,1fr) auto}.act.sinhora li{grid-template-columns:minmax(0,1fr) auto}}
 """
+
+
+def es(v, dec=1, signo=True):
+    if v is None:
+        return "–"
+    txt = f"{v:+.{dec}f}" if signo else f"{v:.{dec}f}"
+    return txt.replace(".", ",").replace("-", "−")
+
+
+def hhmm(ts):
+    return fmt_t(ts)[6:11]
 
 
 def render(d):
@@ -664,64 +713,110 @@ def render(d):
     pos = st["positions"]
     e = html.escape
     t = now()
+    cl = [p for p in pos if p["status"] == "cerrada"]
+    ab = [p for p in pos if p["status"] == "abierta"]
+    total = sum(p["pnl"] for p in cl)
+    aciertos = sum(1 for p in cl if p["tp_done"])
+    signo = "gana" if total > 0 else "pierde" if total < 0 else ""
+    nom_s = lambda p: SALIDAS.get(p.get("exit", DEFAULT_EXIT), p.get("exit", DEFAULT_EXIT))
+
+    # --- actividad: una linea por compra (aunque se pruebe con varias salidas) y una por venta
+    ev, vistas, ventas = [], {}, {}
+    for p in pos:
+        k = (p["strat"], p["mint"], int(p["t_in"]))
+        vistas[k] = vistas.get(k, 0) + 1
+    hechas = set()
+    for p in pos:
+        k = (p["strat"], p["mint"], int(p["t_in"]))
+        if k not in hechas:
+            hechas.add(k)
+            ev.append((p["t_in"], 0, f"<li><time>{hhmm(p['t_in'])}</time><span class='q'><em class='c'>Compra</em>{e(str(p['symbol']))}</span>"
+                       f"<span class='r'></span><span class='d'>{e(NOMBRES.get(p['strat'], p['strat']))}. "
+                       f"Capitalización {p['mc_in'] / 1000:.0f}k $. Se prueba con {vistas[k]} salida{'s' if vistas[k] != 1 else ''}.</span></li>"))
+        if p["status"] == "cerrada":
+            ventas.setdefault((p["strat"], p["mint"], int(p["t_in"]), int(p["t_out"]) // 60, p["reason"]), []).append(p)
+    for ps in ventas.values():
+        p = ps[0]
+        igual = max(q["pnl_pct"] for q in ps) - min(q["pnl_pct"] for q in ps) < 0.05
+        media = sum(q["pnl_pct"] for q in ps) / len(ps)
+        c = "gana" if media > 0 else "pierde"
+        det = "; ".join(f"{nom_s(q).lower()} {es(q['pnl'], 2)} $" for q in ps)
+        nota = (" Mismo minuto que el objetivo; cuenta como stop." if any(q["ambiguous"] for q in ps) else "") + \
+               (" Cerrada con la foto de mercado, sin histórico." if any(q.get("sin_velas") for q in ps) else "")
+        ev.append((p["t_out"], 1, f"<li><time>{hhmm(p['t_out'])}</time><span class='q'><em>Vende</em>{e(str(p['symbol']))}</span>"
+                   f"<span class='r {c}'>{es(media) + ' %' if igual else ''}</span><span class='d'>Por "
+                   f"{e(MOTIVOS.get(p['reason'], p['reason']))}. Salida{'s' if len(ps) > 1 else ''}: {e(det)}. "
+                   f"{e(NOMBRES.get(p['strat'], p['strat']))}.{nota}</span></li>"))
+    ev.sort(key=lambda x: (-x[0], -x[1]))
+    actividad = "".join(x[2] for x in ev[:40]) or "<li class='vacio'>Todavía no hay operaciones. La primera compra aparecerá aquí.</li>"
+
+    # --- abiertas, una linea por compra
+    grupos = {}
+    for p in ab:
+        grupos.setdefault((p["strat"], p["mint"], int(p["t_in"])), []).append(p)
+    filas_ab = ""
+    for k, ps in sorted(grupos.items(), key=lambda kv: -kv[0][2])[:40]:
+        p = ps[0]
+        mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
+        filas_ab += (f"<li><span class='q'>{e(str(p['symbol']))}</span>"
+                     f"<span class='r {'gana' if mv > 0 else 'pierde' if mv < 0 else ''}'>{es(mv)} %</span>"
+                     f"<span class='d'>{e(NOMBRES.get(p['strat'], p['strat']))}. Entró a las {hhmm(p['t_in'])}. "
+                     f"Salidas en prueba: {e(', '.join(nom_s(q).lower() for q in ps))}.</span></li>")
+    filas_ab = filas_ab or "<li class='vacio'>Ninguna ahora mismo.</li>"
+
+    # --- comparacion de reglas
     filas = ""
     for s in cfg["strategies"]:
         for xn in cfg["exits"]:
             x = stats(pos, s, xn, cfg)
-            cls = "" if x["media"] is None else ("up" if x["media"] > 0 else "down")
-            rango = "–" if x.get("lo") is None else f"{x['lo']:+.0f}% a {x['hi']:+.0f}%"
-            filas += (f"<tr><td>{e(NOMBRES.get(s, s))}</td><td>{e(exit_label(cfg, xn))}</td><td>{x['n']}</td>"
-                      f"<td>{x['abiertas']}</td><td>{pct(x['x2_pct'], False)}</td><td>{breakeven_rate(cfg, xn):.0f}%</td>"
-                      f"<td class='{cls}'>{pct(x['media'])}</td><td>{rango}</td>"
-                      f"<td class='{cls}'>{x['total']:+.2f} $</td><td><span class='tag'>{e(x['veredicto'])}</span></td></tr>")
+            c = "" if x["media"] is None else ("gana" if x["media"] > 0 else "pierde")
+            if x["n"]:
+                det = (f"{x['n']} cerrada{'s' if x['n'] != 1 else ''}, aciertan {x['x2_pct']:.0f} % "
+                       f"(necesita {breakeven_rate(cfg, xn):.0f} %). Media por operación {es(x['media'])} %. ")
+            else:
+                det = f"Sin operaciones cerradas todavía (necesita {breakeven_rate(cfg, xn):.0f} % de aciertos). "
+            fin = e(x["veredicto"].capitalize()) + "." if x["n"] else ""
+            filas += (f"<li><span class='q'>{e(NOMBRES.get(s, s))} <em>con salida {e(SALIDAS.get(xn, xn).lower())}</em></span>"
+                      f"<span class='r {c}'>{es(x['total'], 2) + ' $' if x['n'] else '–'}</span>"
+                      f"<span class='d'>{e(exit_label(cfg, xn))}. {det}{fin}</span></li>")
 
-    def fila_pos(p, cerrada):
-        if cerrada:
-            cls = "up" if p["pnl"] > 0 else "down"
-            marca = (" *" if p["ambiguous"] else "") + (" †" if p.get("sin_velas") else "")
-            fin = f"<td>{e(p['reason'])}{marca}</td><td class='{cls}'>{p['pnl_pct']:+.1f}%</td>"
-        else:
-            mv = 100 * (p.get("now_price", p["last_price"]) / p["p_ref"] - 1)
-            fin = f"<td>abierta</td><td class='{'up' if mv > 0 else 'down'}'>{mv:+.1f}%</td>"
-        return (f"<tr><td>{e(str(p['symbol']))}</td><td>{e(NOMBRES.get(p['strat'], p['strat']))}</td>"
-                f"<td>{e(exit_label(cfg, p.get('exit')))}</td><td>{fmt_t(p['t_in'])}</td>"
-                f"<td>{p['mc_in'] / 1000:.0f}k</td>{fin}</tr>")
-
-    ab = sorted((p for p in pos if p["status"] == "abierta"), key=lambda p: -p["t_in"])[:45]
-    ce = sorted((p for p in pos if p["status"] == "cerrada"), key=lambda p: -p["t_out"])[:45]
-    n_ce = sum(1 for p in pos if p["status"] == "cerrada")
-    total = sum(p["pnl"] for p in pos if p["status"] == "cerrada")
-    cab = ("<tr><th>Moneda</th><th>Entrada por</th><th>Salida</th><th>Hora</th><th>Cap.</th>"
-           "<th>Estado</th><th>Resultado</th></tr>")
-    vacio = "<tr><td colspan='7' class='mut'>Todavía nada.</td></tr>"
-    ult = fmt_t(st["last_tick"]) if st.get("last_tick") else "nunca"
+    # --- salud
     hl = health(st, t)
-    estado = ("<span class='tag mal'>revisar</span>" if hl["problemas"] else "<span class='tag ok'>todo en orden</span>")
-    lineas = [f"Pasadas en la última hora: {hl['pasadas_hora']} (lo normal son unas 50)."]
+    lineas = [f"Pasadas en la última hora: {hl['pasadas_hora']}. Lo normal son unas 50."]
     if hl["dur"] is not None:
         lineas.append(f"Cada pasada tarda unos {hl['dur']:.0f} segundos.")
     if hl["revisado_hasta"]:
-        lineas.append(f"Todas las operaciones abiertas están revisadas al menos hasta las {fmt_t(hl['revisado_hasta'])[-5:]}"
-                      f" ({hl['pendientes']} monedas esperando turno).")
+        lineas.append(f"Todas las operaciones abiertas están revisadas al menos hasta las {hhmm(hl['revisado_hasta'])}.")
     if hl["ratio_med"] is not None:
-        lineas.append(f"Las dos fuentes de precios coinciden: diferencia típica de {abs(hl['ratio_med'] - 1) * 100:.1f}% "
-                      f"en {hl['ratio_n']} entradas comprobadas.")
+        lineas.append(f"Las dos fuentes de precios coinciden: diferencia típica de {es(abs(hl['ratio_med'] - 1) * 100, 1, False)} % "
+                      f"en {hl['ratio_n']} compras comprobadas.")
     lineas.append(f"Avisos en la última hora: {hl['avisos_hora']}."
-                  + (" Últimos: " + "; ".join(e(a[:90]) for a in hl["ultimos_avisos"]) if hl["ultimos_avisos"] else ""))
+                  + (" Últimos: " + "; ".join(e(a[:90]) for a in hl["ultimos_avisos"]) + "." if hl["ultimos_avisos"] else ""))
     for pb in hl["problemas"]:
-        lineas.append(f"<strong class='down'>Problema: {e(pb)}.</strong>")
+        lineas.append(f"<strong class='pierde'>Problema: {e(pb)}.</strong>")
+    estado = ("<span class='estado mal'><i></i>Hay algo que revisar</span>" if hl["problemas"]
+              else "<span class='estado'><i></i>Funcionando</span>")
+    ult = f"Última actualización a las {hhmm(st['last_tick'])}" if st.get("last_tick") else "Aún no ha hecho ninguna pasada"
+
     page = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Paper-bot pump.fun</title><style>{CSS}</style></head><body><main>
-<header><h1>Paper-bot pump.fun</h1><p class="mut">Dinero simulado. Última pasada: {ult} · {len(st['watch'])} monedas en vigilancia · registro iniciado el {fmt_t(st['started'])}</p></header>
-<section class="card"><h2>Resumen</h2><p>{n_ce} operaciones cerradas, resultado <strong class="{'up' if total > 0 else 'down' if total < 0 else ''}">{total:+.2f} $</strong> · {sum(1 for p in pos if p['status'] == 'abierta')} abiertas · {cfg['stake_usd']:.0f} $ simulados por operación</p></section>
-<section class="card"><h2>¿Qué combinación de entrada y salida gana?</h2><div class="scroll"><table>
-<tr><th>Entrada por</th><th>Salida</th><th>Cerradas</th><th>Abiertas</th><th>Aciertan</th><th>Necesita</th><th>Media/op.</th><th>Rango 95%</th><th>Total</th><th>Veredicto</th></tr>{filas}</table></div>
-<p class="mut" style="margin-top:10px">Salida = objetivo · stop · tiempo máximo; al tocar el objetivo se vende todo. «Aciertan» es el % que toca el objetivo antes del stop; «Necesita» es el mínimo aproximado para no perder con esos costes. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas.</p></section>
-<section class="card"><h2>Salud del bot {estado}</h2><ul class="mut">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
-<section class="card"><h2>Abiertas</h2><div class="scroll"><table>{cab}{''.join(fila_pos(p, False) for p in ab) or vacio}</table></div></section>
-<section class="card"><h2>Últimas cerradas</h2><div class="scroll"><table>{cab}{''.join(fila_pos(p, True) for p in ce) or vacio}</table></div>
-<p class="mut" style="margin-top:10px">* stop y objetivo en el mismo minuto: se cuenta como stop. † cerrada sin velas, con la foto de mercado.</p></section>
-<p class="mut">Simulación: precios reales, ejecución supuesta. En real los stops se ejecutan peor y hay monedas que no dejan vender. Un resultado positivo aquí no garantiza ganar dinero. Con varias combinaciones a la vez, la mejor puede serlo por suerte: hay que confirmarla con monedas nuevas.</p>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="120">
+<title>Paper-bot pump.fun</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&display=swap">
+<style>{CSS}</style></head><body><main>
+<header><div class="cab"><h1>Paper-bot pump.fun</h1>{estado}</div>
+<p class="g s" style="margin-top:6px">Dinero simulado, {es(cfg['stake_usd'], 0, False)} $ por operación. {ult}; la página se renueva sola y los datos cambian cada 10 minutos.</p></header>
+<section class="cifras" aria-label="Resumen">
+<div><b class="{signo}">{es(total, 2)} $</b><span>resultado de las cerradas</span></div>
+<div><b>{len(cl)}</b><span>cerradas, {aciertos} con objetivo</span></div>
+<div><b>{len(grupos)}</b><span>compras abiertas</span></div></section>
+<section><h2>Actividad</h2><ul class="act">{actividad}</ul></section>
+<section><h2>Abiertas ahora</h2><ul class="act sinhora">{filas_ab}</ul>
+<p class="g s" style="margin-top:8px">El porcentaje es cuánto se ha movido el precio desde la compra, sin descontar costes.</p></section>
+<section><h2>Qué reglas ganan</h2><ul class="act sinhora">{filas}</ul>
+<p class="g s" style="margin-top:8px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas.</p></section>
+<section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
+<p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. Registro iniciado el {fmt_t(st['started'])}.</p>
 </main></body></html>"""
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
