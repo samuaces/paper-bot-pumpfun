@@ -42,6 +42,10 @@ CFG = {
              "stop_after_tp_mult": 1.0,     # solo si tp_fraction < 1: stop del resto en la entrada
              "stop_extra_slippage_pct": 5.0,  # un stop se ejecuta peor que su nivel
              "max_hours": 24.0},            # cierre por tiempo
+    # salidas que se prueban a la vez sobre las mismas entradas (pisan los valores de "exit")
+    "exits": {"x2_24h": {},
+              "x2_1h": {"max_hours": 1.0},
+              "rapida_1h": {"tp_mult": 1.5, "stop_pct": 20.0, "max_hours": 1.0}},
     "universe": {"dex": "pumpswap", "max_pair_age_h": 24.0, "max_watch": 1500},
     "strategies": {
         # compra sin filtro una de cada N graduadas, una hora despues de graduarse
@@ -67,8 +71,20 @@ GT = "https://api.geckoterminal.com/api/v2/networks/solana/"
 PUMP = "https://frontend-api-v3.pump.fun/"
 
 
+DEFAULT_EXIT = "x2_24h"
+
+
 def now():
     return time.time()
+
+
+def exit_cfg(cfg, name):
+    return {**cfg["exit"], **cfg.get("exits", {}).get(name or DEFAULT_EXIT, {})}
+
+
+def exit_label(cfg, name):
+    ex = exit_cfg(cfg, name)
+    return f"x{ex['tp_mult']:g} · −{ex['stop_pct']:g}% · {ex['max_hours']:g} h"
 
 
 def log(msg):
@@ -226,12 +242,12 @@ def gt_bars(pool, mint, since, until):
 
 # ---------------------------------------------------------------- operaciones simuladas
 
-def open_position(strat, mint, s, cfg, t):
+def open_position(strat, mint, s, cfg, t, exit_name=DEFAULT_EXIT):
     f = cfg["fees"]
     stake = cfg["stake_usd"]
     p_buy = s["price"] * (1 + f["slippage_pct"] / 100)
     units = stake * (1 - (f["bot_pct"] + f["pool_pct"]) / 100) / p_buy
-    return {"id": f"{strat}:{mint}", "strat": strat, "mint": mint, "pool": s["pool"], "symbol": s["symbol"],
+    return {"id": f"{strat}/{exit_name}:{mint}", "strat": strat, "exit": exit_name, "mint": mint, "pool": s["pool"], "symbol": s["symbol"],
             "t_in": t, "p_ref": s["price"], "mc_in": s["mc"], "units": units, "stake": stake,
             "frac_left": 1.0, "tp_done": False, "proceeds": 0.0, "n_tx": 1, "last_check": t,
             "last_price": s["price"], "last_seen": t, "status": "abierta", "reason": "",
@@ -256,7 +272,7 @@ def _sell(pos, frac, base_price, extra_slip, cfg, ts, reason):
 
 def apply_bar(pos, ts, o, h, l, c, cfg):
     """Avanza una posicion con una vela (o una foto: o=h=l=c). True si queda cerrada."""
-    ex = cfg["exit"]
+    ex = exit_cfg(cfg, pos.get("exit"))
     p = pos["p_ref"]
     tp = p * ex["tp_mult"]
     stop = p * ex["stop_after_tp_mult"] if pos["tp_done"] else p * (1 - ex["stop_pct"] / 100)
@@ -265,15 +281,15 @@ def apply_bar(pos, ts, o, h, l, c, cfg):
         if not pos["tp_done"] and h >= tp:
             pos["ambiguous"] = True      # stop y x2 en la misma vela: cuenta como stop
         _sell(pos, pos["frac_left"], min(stop, o), ex["stop_extra_slippage_pct"], cfg, ts,
-              "stop_tras_x2" if pos["tp_done"] else "stop")
+              "stop_tras_objetivo" if pos["tp_done"] else "stop")
         return True
     if not pos["tp_done"] and h >= tp:
         pos["tp_done"] = True
-        _sell(pos, min(ex["tp_fraction"], pos["frac_left"]), tp, 0.0, cfg, ts, "x2")
+        _sell(pos, min(ex["tp_fraction"], pos["frac_left"]), tp, 0.0, cfg, ts, "objetivo")
         if pos["status"] == "cerrada":
             return True
     if ts - pos["t_in"] >= ex["max_hours"] * 3600:
-        _sell(pos, pos["frac_left"], c, 0.0, cfg, ts, "x2_y_tiempo" if pos["tp_done"] else "tiempo")
+        _sell(pos, pos["frac_left"], c, 0.0, cfg, ts, "objetivo_y_tiempo" if pos["tp_done"] else "tiempo")
         return True
     return False
 
@@ -324,7 +340,7 @@ def save(d, st):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, separators=(",", ":"))
     os.replace(tmp, os.path.join(d, "estado.json"))
-    cols = ["strat", "symbol", "mint", "t_in", "t_out", "mc_in", "reason", "pnl", "pnl_pct", "ambiguous"]
+    cols = ["strat", "exit", "symbol", "mint", "t_in", "t_out", "mc_in", "reason", "pnl", "pnl_pct", "ambiguous"]
     with open(os.path.join(d, "operaciones.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(cols)
@@ -366,7 +382,7 @@ def tick(d):
         return st
 
     # 1) salidas
-    gt_calls = 0
+    gt_calls, velas = 0, {}
     for p in sorted(abiertas, key=lambda q: q["last_check"]):
         s = snap.get(p["mint"])
         if s is None:
@@ -375,10 +391,13 @@ def tick(d):
             continue
         p["last_seen"] = t
         closed = False
-        if cfg["gt_candles"] and t - p["last_check"] > 180 and gt_calls < cfg["gt_max_calls"]:
-            gt_calls += 1
-            bars = gt_bars(p["pool"], p["mint"], p["last_check"], t)
-            time.sleep(2.2)
+        if cfg["gt_candles"] and t - p["last_check"] > 180:
+            key = (p["pool"], int(p["last_check"]))     # las salidas de una misma entrada comparten velas
+            if key not in velas and gt_calls < cfg["gt_max_calls"]:
+                gt_calls += 1
+                velas[key] = gt_bars(p["pool"], p["mint"], p["last_check"], t)
+                time.sleep(2.2)
+            bars = velas.get(key, [])
             if bars and not (1 / 3 < bars[-1][4] / s["price"] < 3):
                 log(f"  velas descartadas para {p['symbol']}: no cuadran con el precio actual")
                 bars = []
@@ -408,7 +427,8 @@ def tick(d):
             if strat in w["done"]:
                 continue
             if wants(strat, s, w, cfg, t):
-                positions.append(open_position(strat, m, s, cfg, t))
+                for ex_name in cfg["exits"]:
+                    positions.append(open_position(strat, m, s, cfg, t, ex_name))
                 w["done"].append(strat)
                 entradas += 1
 
@@ -423,10 +443,11 @@ def tick(d):
 
 # ---------------------------------------------------------------- informe
 
-def stats(positions, strat, cfg):
-    cl = [p for p in positions if p["strat"] == strat and p["status"] == "cerrada"]
+def stats(positions, strat, exit_name, cfg):
+    mias = [p for p in positions if p["strat"] == strat and p.get("exit", DEFAULT_EXIT) == exit_name]
+    cl = [p for p in mias if p["status"] == "cerrada"]
     n = len(cl)
-    out = {"n": n, "abiertas": sum(1 for p in positions if p["strat"] == strat and p["status"] == "abierta")}
+    out = {"n": n, "abiertas": len(mias) - n}
     if not n:
         return dict(out, x2=0, x2_pct=None, media=None, total=0.0, lo=None, hi=None, veredicto="sin datos")
     r = [p["pnl_pct"] for p in cl]
@@ -447,10 +468,10 @@ def stats(positions, strat, cfg):
     return out
 
 
-def breakeven_x2_rate(cfg):
-    """% de operaciones que deben tocar x2 antes del stop para no perder, si el resto
-    tras el x2 sale de media al precio de entrada (su stop)."""
-    f, ex = cfg["fees"], cfg["exit"]
+def breakeven_rate(cfg, exit_name=DEFAULT_EXIT):
+    """% de operaciones que deben tocar el objetivo antes del stop para no perder.
+    Aproximado: no cuenta las que se cierran por tiempo."""
+    f, ex = cfg["fees"], exit_cfg(cfg, exit_name)
     side = (1 - (f["bot_pct"] + f["pool_pct"]) / 100)
     k = side * side * (1 - f["slippage_pct"] / 100) / (1 + f["slippage_pct"] / 100)
     se = 1 - ex["stop_extra_slippage_pct"] / 100
@@ -493,15 +514,16 @@ def render(d):
     cfg, st = load(d)
     pos = st["positions"]
     e = html.escape
-    be = breakeven_x2_rate(cfg)
     filas = ""
     for s in cfg["strategies"]:
-        x = stats(pos, s, cfg)
-        cls = "" if x["media"] is None else ("up" if x["media"] > 0 else "down")
-        rango = "–" if x.get("lo") is None else f"{x['lo']:+.0f}% a {x['hi']:+.0f}%"
-        filas += (f"<tr><td>{e(NOMBRES.get(s, s))}</td><td>{x['n']}</td><td>{x['abiertas']}</td>"
-                  f"<td>{pct(x['x2_pct'], False)}</td><td class='{cls}'>{pct(x['media'])}</td><td>{rango}</td>"
-                  f"<td class='{cls}'>{x['total']:+.2f} $</td><td><span class='tag'>{e(x['veredicto'])}</span></td></tr>")
+        for xn in cfg["exits"]:
+            x = stats(pos, s, xn, cfg)
+            cls = "" if x["media"] is None else ("up" if x["media"] > 0 else "down")
+            rango = "–" if x.get("lo") is None else f"{x['lo']:+.0f}% a {x['hi']:+.0f}%"
+            filas += (f"<tr><td>{e(NOMBRES.get(s, s))}</td><td>{e(exit_label(cfg, xn))}</td><td>{x['n']}</td>"
+                      f"<td>{x['abiertas']}</td><td>{pct(x['x2_pct'], False)}</td><td>{breakeven_rate(cfg, xn):.0f}%</td>"
+                      f"<td class='{cls}'>{pct(x['media'])}</td><td>{rango}</td>"
+                      f"<td class='{cls}'>{x['total']:+.2f} $</td><td><span class='tag'>{e(x['veredicto'])}</span></td></tr>")
 
     def fila_pos(p, cerrada):
         if cerrada:
@@ -509,26 +531,28 @@ def render(d):
             fin = f"<td>{e(p['reason'])}{' *' if p['ambiguous'] else ''}</td><td class='{cls}'>{p['pnl_pct']:+.1f}%</td>"
         else:
             mv = 100 * (p["last_price"] / p["p_ref"] - 1)
-            fin = f"<td>{'x2 hecho' if p['tp_done'] else 'abierta'}</td><td class='{'up' if mv > 0 else 'down'}'>{mv:+.1f}%</td>"
+            fin = f"<td>abierta</td><td class='{'up' if mv > 0 else 'down'}'>{mv:+.1f}%</td>"
         return (f"<tr><td>{e(str(p['symbol']))}</td><td>{e(NOMBRES.get(p['strat'], p['strat']))}</td>"
-                f"<td>{fmt_t(p['t_in'])}</td><td>{p['mc_in'] / 1000:.0f}k</td>{fin}</tr>")
+                f"<td>{e(exit_label(cfg, p.get('exit')))}</td><td>{fmt_t(p['t_in'])}</td>"
+                f"<td>{p['mc_in'] / 1000:.0f}k</td>{fin}</tr>")
 
-    ab = sorted((p for p in pos if p["status"] == "abierta"), key=lambda p: -p["t_in"])[:40]
-    ce = sorted((p for p in pos if p["status"] == "cerrada"), key=lambda p: -p["t_out"])[:40]
-    cab = "<tr><th>Moneda</th><th>Estrategia</th><th>Entrada</th><th>Cap.</th><th>Estado</th><th>Resultado</th></tr>"
-    vacio = "<tr><td colspan='6' class='mut'>Todavía nada.</td></tr>"
+    ab = sorted((p for p in pos if p["status"] == "abierta"), key=lambda p: -p["t_in"])[:45]
+    ce = sorted((p for p in pos if p["status"] == "cerrada"), key=lambda p: -p["t_out"])[:45]
+    cab = ("<tr><th>Moneda</th><th>Entrada por</th><th>Salida</th><th>Hora</th><th>Cap.</th>"
+           "<th>Estado</th><th>Resultado</th></tr>")
+    vacio = "<tr><td colspan='7' class='mut'>Todavía nada.</td></tr>"
     ult = fmt_t(st["last_tick"]) if st.get("last_tick") else "nunca"
     fuentes = ", ".join(st.get("notes", {}).get("fuentes", [])) or "ninguna"
     page = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Paper-bot pump.fun</title><style>{CSS}</style></head><body><main>
 <header><h1>Paper-bot pump.fun</h1><p class="mut">Dinero simulado. Última pasada: {ult} · {st['ticks']} pasadas · {len(st['watch'])} monedas en vigilancia · fuentes activas: {e(fuentes)}</p></header>
-<section class="card"><h2>¿El filtro elige mejor que comprar sin filtro?</h2><div class="scroll"><table>
-<tr><th>Estrategia</th><th>Cerradas</th><th>Abiertas</th><th>Tocan x2</th><th>Media/op.</th><th>Rango 95%</th><th>Total</th><th>Veredicto</th></tr>{filas}</table></div>
-<p class="mut" style="margin-top:10px">Reglas: al tocar x{cfg['exit']['tp_mult']:g} se vende {'todo' if cfg['exit']['tp_fraction'] >= 1 else 'una parte'}; stop a −{cfg['exit']['stop_pct']:g}%. Con estas reglas y costes hace falta que alrededor del {be:.0f}% toque el objetivo antes del stop solo para no perder. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas. Cada operación simula {cfg['stake_usd']:.0f} $.</p></section>
+<section class="card"><h2>¿Qué combinación de entrada y salida gana?</h2><div class="scroll"><table>
+<tr><th>Entrada por</th><th>Salida</th><th>Cerradas</th><th>Abiertas</th><th>Aciertan</th><th>Necesita</th><th>Media/op.</th><th>Rango 95%</th><th>Total</th><th>Veredicto</th></tr>{filas}</table></div>
+<p class="mut" style="margin-top:10px">Salida = objetivo · stop · tiempo máximo; al tocar el objetivo se vende todo. «Aciertan» es el % que toca el objetivo antes del stop; «Necesita» es el mínimo aproximado para no perder con esos costes. El veredicto exige {cfg['min_trades_verdict']} operaciones cerradas. Cada operación simula {cfg['stake_usd']:.0f} $.</p></section>
 <section class="card"><h2>Abiertas</h2><div class="scroll"><table>{cab}{''.join(fila_pos(p, False) for p in ab) or vacio}</table></div></section>
 <section class="card"><h2>Últimas cerradas</h2><div class="scroll"><table>{cab}{''.join(fila_pos(p, True) for p in ce) or vacio}</table></div>
-<p class="mut" style="margin-top:10px">* stop y x2 en la misma vela: se cuenta como stop.</p></section>
-<p class="mut">Simulación: precios reales, ejecución supuesta. En real los stops se ejecutan peor y hay monedas que no dejan vender. Un resultado positivo aquí no garantiza ganar dinero.</p>
+<p class="mut" style="margin-top:10px">* stop y objetivo en la misma vela: se cuenta como stop.</p></section>
+<p class="mut">Simulación: precios reales, ejecución supuesta. En real los stops se ejecutan peor y hay monedas que no dejan vender. Un resultado positivo aquí no garantiza ganar dinero. Con varias combinaciones a la vez, la mejor puede serlo por suerte: hay que confirmarla con monedas nuevas.</p>
 </main></body></html>"""
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:

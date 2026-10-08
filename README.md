@@ -7,4 +7,4 @@ Bot de prueba para pump.fun con **dinero simulado**. No toca ninguna wallet ni p
 - `docs/index.html`: informe (se publica con GitHub Pages).
 - `docs/config.json` (opcional): para cambiar reglas sin tocar el código.
 
-Compara tres estrategias: control (sin filtro), filtro básico y filtro de impulso. El veredicto exige 50 operaciones cerradas por estrategia. Un resultado positivo en simulación no garantiza ganar dinero.
+Compara tres formas de entrar (control sin filtro, filtro básico, filtro de impulso) con tres formas de salir (x2 en 24 h, x2 en 1 h, +50% en 1 h). El veredicto exige 50 operaciones cerradas por combinación. Un resultado positivo en simulación no garantiza ganar dinero.

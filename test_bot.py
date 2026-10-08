@@ -60,6 +60,7 @@ def fake_http(url, tries=3):
     raise AssertionError(url)
 
 
+bot.CFG["exits"] = {"x2_24h": {}}      # el recorrido principal prueba una sola salida
 bot.http_json = fake_http
 bot.now = lambda: clock["t"]
 bot.time.sleep = lambda s: None
@@ -73,13 +74,14 @@ def setp(mint, price):
 
 
 def pos(st, strat, mint):
-    return next(p for p in st["positions"] if p["id"] == f"{strat}:{mint}")
+    return next(p for p in st["positions"] if p["id"] == f"{strat}/x2_24h:{mint}")
 
 
 # --- pasada 1: quien entra donde ------------------------------------------------
 st = bot.tick(d)
 ids = sorted(p["id"] for p in st["positions"])
-esperado = sorted([f"basico:{m}" for m in (B, H, F, M)] + [f"impulso:{M}"] + [f"control:{m}" for m in (M, N)])
+esperado = sorted([f"basico/x2_24h:{m}" for m in (B, H, F, M)] + [f"impulso/x2_24h:{M}"]
+                  + [f"control/x2_24h:{m}" for m in (M, N)])
 assert ids == esperado, ids   # reales: pasan basico, no impulso (h1<0); control solo edad 60-120 min
 assert "OTRA" not in st["watch"]
 print("entradas OK:", len(ids))
@@ -103,7 +105,7 @@ setp(M, 0.0001)
 st = bot.tick(d)
 m = pos(st, "impulso", M)
 exp_m = 10 * k * (0.5 * 2 + 0.5 * 1 * 0.95) - 10 - 3 * 0.05
-assert m["status"] == "cerrada" and m["reason"] == "stop_tras_x2" and abs(m["pnl"] - exp_m) < 1e-6, (m["pnl"], exp_m)
+assert m["status"] == "cerrada" and m["reason"] == "stop_tras_objetivo" and abs(m["pnl"] - exp_m) < 1e-6, (m["pnl"], exp_m)
 print(f"x2 + stop en entrada OK: {m['pnl_pct']:+.1f}%")
 
 # --- pasada 4 (10 min despues, modo cron): velas de 1 min revelan una mecha ---------
@@ -140,16 +142,29 @@ snap = {"price": 1.0, "mc": 50000, "pool": "p", "symbol": "T"}
 q = bot.open_position("basico", "T", snap, bot.CFG, 0)
 assert bot.apply_bar(q, 60, 1.0, 2.3, 0.9, 2.2, bot.CFG)          # vela que toca x2
 exp_q = 10 * k * 2 - 10 - 2 * 0.05
-assert q["status"] == "cerrada" and q["reason"] == "x2" and abs(q["pnl"] - exp_q) < 1e-6, (q["pnl"], exp_q)
+assert q["status"] == "cerrada" and q["reason"] == "objetivo" and abs(q["pnl"] - exp_q) < 1e-6, (q["pnl"], exp_q)
 print(f"salida total en el objetivo OK: {q['pnl_pct']:+.1f}%")
+
+# --- salida rapida: objetivo +50%, stop -20%, 1 hora ---------------------------------
+bot.CFG["exits"]["rapida_1h"] = {"tp_mult": 1.5, "stop_pct": 20.0, "max_hours": 1.0}
+r1 = bot.open_position("basico", "T", snap, bot.CFG, 0, "rapida_1h")
+assert bot.apply_bar(r1, 60, 1.0, 1.55, 0.95, 1.5, bot.CFG) and r1["reason"] == "objetivo"
+assert abs(r1["pnl"] - (10 * k * 1.5 - 10 - 0.10)) < 1e-6
+r2 = bot.open_position("basico", "T", snap, bot.CFG, 0, "rapida_1h")
+assert not bot.apply_bar(r2, 60, 1.0, 1.2, 0.85, 1.1, bot.CFG)       # ni objetivo ni stop
+assert bot.apply_bar(r2, 3660, 1.1, 1.15, 1.05, 1.1, bot.CFG) and r2["reason"] == "tiempo"
+assert abs(r2["pnl"] - (10 * k * 1.1 - 10 - 0.10)) < 1e-6
+r3 = bot.open_position("basico", "T", snap, bot.CFG, 0, "rapida_1h")
+assert bot.apply_bar(r3, 60, 1.0, 1.0, 0.79, 0.8, bot.CFG) and r3["reason"] == "stop"
+print(f"salida rapida OK: objetivo {r1['pnl_pct']:+.1f}%, tiempo {r2['pnl_pct']:+.1f}%, stop {r3['pnl_pct']:+.1f}%")
+for xn in ("x2_24h", "rapida_1h"):
+    print(f"  {bot.exit_label(bot.CFG, xn)}: necesita {bot.breakeven_rate(bot.CFG, xn):.0f}% de aciertos")
 
 bot.render(d)
 page = open(os.path.join(d, "index.html"), encoding="utf-8").read()
 assert "Filtro de impulso" in page and "MOMO" in page
-be = bot.breakeven_x2_rate(bot.CFG)
-print(f"umbral para no perder: {be:.1f}% de operaciones deben tocar x2")
 for s in bot.CFG["strategies"]:
-    x = bot.stats(st["positions"], s, bot.CFG)
+    x = bot.stats(st["positions"], s, "x2_24h", bot.CFG)
     print(f"  {s}: {x['n']} cerradas, media {x['media']:+.1f}%, {x['veredicto']}")
 shutil.rmtree(d)
 print("TODO OK")
