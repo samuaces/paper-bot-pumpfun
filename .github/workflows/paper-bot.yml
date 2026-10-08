@@ -3,6 +3,8 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+  push:
+    paths: ["bot.py", ".github/workflows/paper-bot.yml"]
 permissions:
   contents: write
 concurrency:
