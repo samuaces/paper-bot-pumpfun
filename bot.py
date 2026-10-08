@@ -14,6 +14,10 @@ Como mide:
     de GeckoTerminal. Asi se ven las mechas dentro de cada minuto y no se pierde nada
     aunque el bot este parado un rato: al volver, reconstruye lo ocurrido.
   - Una vela solo se da por buena cuando tiene 2 minutos de antiguedad.
+  - Dentro de un minuto no se sabe en que orden paso cada cosa, asi que se apunta siempre lo peor:
+    si la moneda se hunde de golpe y ese minuto cierra por debajo del stop, se da por vendida al
+    cierre (un stop no llega a tiempo en un desplome); y si toca el objetivo pero el minuto cierra
+    por debajo, se da por vendida al cierre, no al objetivo.
 
 Uso (solo Python 3.9+, sin instalar nada):
     python bot.py tick            una pasada
@@ -94,7 +98,7 @@ CFG = {
            "fallback_min": 30},   # moneda sin velas (error que no es de cupo) tanto tiempo: foto de mercado
 }
 
-STATE_V = 2
+STATE_V = 3     # 3: las ventas se apuntan al peor precio entre su nivel y el cierre del minuto
 DEFAULT_EXIT = "x2_24h"
 UA = "Mozilla/5.0 (paper-bot; solo lectura)"
 DEX = "https://api.dexscreener.com/tokens/v1/solana/"
@@ -367,12 +371,14 @@ def apply_bar(pos, ts, o, h, l, c, cfg):
     if l <= stop:
         if not pos["tp_done"] and h >= tp:
             pos["ambiguous"] = True      # stop y objetivo en la misma vela: cuenta como stop
-        _sell(pos, pos["frac_left"], min(stop, o), ex["stop_extra_slippage_pct"], cfg, ts,
-              "stop_tras_objetivo" if pos["tp_done"] else "stop")
+        # un stop se ejecuta peor que su nivel. Y si la moneda se hunde de golpe y el minuto cierra aun mas
+        # abajo, no habria dado tiempo a vender en el stop: se apunta vendida al cierre de ese minuto
+        venta = min(min(stop, o) * (1 - ex["stop_extra_slippage_pct"] / 100), c)
+        _sell(pos, pos["frac_left"], venta, 0.0, cfg, ts, "stop_tras_objetivo" if pos["tp_done"] else "stop")
         return True
     if not pos["tp_done"] and h >= tp:
-        pos["tp_done"] = True
-        _sell(pos, min(ex["tp_fraction"], pos["frac_left"]), tp, 0.0, cfg, ts, "objetivo")
+        pos["tp_done"] = True            # toca el objetivo; si el minuto cierra por debajo, se apunta el cierre
+        _sell(pos, min(ex["tp_fraction"], pos["frac_left"]), min(tp, c), 0.0, cfg, ts, "objetivo")
         if pos["status"] == "cerrada":
             return True
     if ts - pos["t_in"] >= ex["max_hours"] * 3600:
@@ -680,7 +686,7 @@ def archiva(d, st, cfg, t):
     no crezca sin fin. No se pierde nada de lo que cuenta:
       - lo que el bot aprendio de ellas queda resumido en st["archivo"]["ej"] (ver aprende.resumen);
       - sus cifras por regla (cuantas, medias, aciertos) quedan sumadas en st["archivo"]["reglas"];
-      - el detalle de cada una se anade a <dir>/archivo/AAAAMMDD-HH.csv.
+      - el detalle de cada una se anade a <dir>/archivo/vN-AAAAMMDD-HH.csv (N: metodo de medicion).
     Las operaciones de la cuenta no se archivan nunca. Todo se prepara aparte y solo al final, si nada
     ha fallado, se cambia el estado: un fallo deja las cosas como estaban y se reintenta en otra pasada
     (el detalle puede entonces quedar repetido en el CSV; la columna id lo delata).
@@ -733,7 +739,7 @@ def archiva(d, st, cfg, t):
         filas = [fila_csv(p, COLS_ARCH) for p in fuera]
         carpeta = os.path.join(d, "archivo")
         os.makedirs(carpeta, exist_ok=True)
-        ruta = os.path.join(carpeta, datetime.fromtimestamp(t, timezone.utc).strftime("%Y%m%d-%H") + ".csv")
+        ruta = os.path.join(carpeta, datetime.fromtimestamp(t, timezone.utc).strftime(f"v{STATE_V}-%Y%m%d-%H") + ".csv")
         nuevo = not os.path.exists(ruta) or os.path.getsize(ruta) == 0
         with open(ruta, "a", newline="", encoding="utf-8", errors="backslashreplace") as f:
             w = csv.writer(f)
@@ -1042,8 +1048,8 @@ def aprendido(pos, cfg, arch=None):
     cuantos = {xn: len(rows) + viejos.get(xn, {}).get("n", 0) for xn, rows in ej.items()}
     total = sum(cuantos.values())
     if not total:
-        return ["Todavía no ha cerrado ninguna operación de prueba de la que aprender. Hasta entonces las compras "
-                "de la cuenta son tanteos: parte de que, sin ventaja, cada operación pierde lo que cuestan las comisiones "
+        return ["Todavía no ha cerrado ninguna operación de prueba de la que aprender. Hasta entonces la cuenta "
+                "no compra: parte de que, sin ventaja, cada operación pierde lo que cuestan las comisiones "
                 f"(un {es(coste_pct(cfg), 1, False)} %)."]
     out = [f"Ha aprendido de {total} operaciones de prueba cerradas."]
     for xn, rows in ej.items():
@@ -1217,7 +1223,7 @@ def render(d):
 <p class="g s" style="margin:8px 0 18px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop.</p>
 <h2>Últimas pruebas</h2><ul class="act">{act_lab}</ul></details></section>
 <section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
-<p class="g s">Simulación con precios reales y ejecución supuesta. Con dinero real los stops se ejecutan peor y hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
+<p class="g s">Simulación con precios reales y ejecución supuesta. Cuando una moneda se hunde de golpe se apunta vendida al precio ya hundido, no al del stop, porque un stop no llega a tiempo. Aun así, con dinero real hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
 </main>
 <script>{JS_PANEL}</script>
 </body></html>"""
