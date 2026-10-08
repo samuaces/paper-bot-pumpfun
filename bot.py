@@ -50,7 +50,9 @@ CFG = {
     # salidas que se prueban a la vez sobre las mismas entradas (pisan los valores de "exit")
     "exits": {"x2_24h": {},
               "x2_1h": {"max_hours": 1.0},
-              "rapida_1h": {"tp_mult": 1.5, "stop_pct": 20.0, "max_hours": 1.0}},
+              "rapida_1h": {"tp_mult": 1.5, "stop_pct": 20.0, "max_hours": 1.0},
+              # entrar y salir muy rapido: objetivo pequeno, stop corto, 15 minutos
+              "relampago_15m": {"tp_mult": 1.2, "stop_pct": 10.0, "max_hours": 0.25}},
     "universe": {"dex": "pumpswap", "max_pair_age_h": 24.0, "max_watch": 3000,
                  "prune_after_min": 120},   # pasada esa edad, se deja de vigilar lo que ya no puede cumplir
     "strategies": {
@@ -103,7 +105,8 @@ def exit_cfg(cfg, name):
 
 def exit_label(cfg, name):
     ex = exit_cfg(cfg, name)
-    return f"x{ex['tp_mult']:g} · −{ex['stop_pct']:g}% · {ex['max_hours']:g} h"
+    h = ex["max_hours"]
+    return f"x{ex['tp_mult']:g} · −{ex['stop_pct']:g}% · " + (f"{h:g} h" if h >= 1 else f"{h * 60:g} min")
 
 
 def http_json(url, tries=3):
