@@ -86,6 +86,7 @@ CFG = {
     # No tantea: de probar cosas se encarga el laboratorio, que no gasta saldo.
     "cuenta": {"activa": True, "saldo_eur": 30.0, "huecos": 3, "min_compra_eur": 3.0,
                "margen_pct": 2.0,       # ganancia esperada minima, ya descontados los costes
+               "min_ejemplos": 50,      # no usa una salida hasta haber visto cerrarse tantas pruebas con ella
                "max_horas": 1.0},       # la cuenta solo usa salidas que cierran en este tiempo como mucho
     "aprende": {"sigma0": 45.0, "tau": 10.0, "tau_bias": 10.0, "tope_pct": 150.0},
     "archiva_h": 2.0,                   # las pruebas cerradas hace mas de estas horas pasan al archivo
@@ -548,7 +549,7 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
     if not c.get("activa") or not senales:
         return 0
     ms = {xn: m for xn, m in modelos(positions, cfg, arch).items()
-          if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9)}
+          if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9) and m["n"] >= c.get("min_ejemplos", 0)}
     cands, mejor_esp = [], None
     for strat, mint, feat, por_salida in senales:
         d = aprende.mejor({xn: m for xn, m in ms.items() if xn in por_salida}, feat)
@@ -1140,7 +1141,10 @@ def render(d):
         elif ro["buenas"]:
             ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas} y {ro['buenas']} apuntaba{'n' if ro['buenas'] != 1 else ''} a ganancia, "
                      f"pero no compró: las {cfg['cuenta']['huecos']} compras de la cuenta estaban ocupadas o no quedaba saldo libre.")
-        elif ro["mejor"] is not None:
+        elif ro["mejor"] is None:
+            ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}, pero aún no compra: espera a haber visto cerrarse "
+                     f"{cfg['cuenta'].get('min_ejemplos', 0)} pruebas con una misma salida para fiarse de lo aprendido.")
+        else:
             ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}: a la mejor, lo aprendido le daba un resultado esperado de "
                      f"{es(ro['mejor'])} %. La cuenta solo compra por encima de {es(cfg['cuenta']['margen_pct'], 0)} %, así que no compró.")
 

@@ -283,7 +283,7 @@ assert "compras que ventas" in top[0] or "ventas que compras" in top[0]
 print(f"aprendizaje OK: sin datos compra el {tomadas0:.0%} de las señales; con 600 ejemplos, {t_a:.0%} de las buenas y {t_b:.0%} de las malas")
 
 # --- la cuenta de 30 euros: huecos, importes y resultado -------------------------------
-cfgc = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": -1e9}})
+cfgc = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": -1e9, "min_ejemplos": 0}})
 ps_ = []
 def senal(mint):
     sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
@@ -315,7 +315,7 @@ assert all(bot.exit_cfg(cfgc, p["exit"])["max_hours"] <= 1 for p in ps_ if p.get
 cfg2 = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True}})                                       # margen normal: +2 %
 nt_ = {}
 assert bot.cuenta_opera([senal("S")], [], cfg2, 0, nt_) == 0                                        # sin ejemplos no compra
-assert nt_["cuenta_ronda"]["buenas"] == 0 and nt_["cuenta_ronda"]["mejor"] == round(-coste, 1)      # y deja dicho por que
+assert nt_["cuenta_ronda"]["buenas"] == 0 and nt_["cuenta_ronda"]["mejor"] is None                  # y deja dicho por que
 hist = []
 for i in range(120):                                                                                # 120 ejemplos: bs alto gana, bs bajo pierde
     for pre, ft, y in (("a", feat_alta, 30.0), ("b", feat_baja, -20.0)):
@@ -329,6 +329,15 @@ def senal2(mint, ft):
     return ("control", mint, ft, por)
 assert bot.cuenta_opera([senal2("BUENA", feat_alta), senal2("MALA", feat_baja)], hist, cfg2, 999, {}) == 1
 elegida = [p for p in hist if p.get("cuenta")]
+pocos = bot.deep_merge(cfg2, {"cuenta": {"min_ejemplos": 241}})                                    # con 240 ejemplos y pidiendo 241, espera
+h2_ = [p for p in copy.deepcopy(hist) if not p.pop("cuenta", None)]
+def senal3(mint):
+    sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
+    por = {xn: bot.open_position("control", mint, sn, cfg2, 999, xn, feat_alta) for xn in cfg2["exits"]}
+    h2_.extend(por.values())
+    return ("control", mint, feat_alta, por)
+assert bot.cuenta_opera([senal3("OTRA1")], h2_, pocos, 999, {}) == 0
+assert bot.cuenta_opera([senal3("OTRA2")], h2_, bot.deep_merge(cfg2, {"cuenta": {"min_ejemplos": 240}}), 999, {}) == 1
 assert [p["mint"] for p in elegida] == ["BUENA"] and elegida[0]["exit"] == "rapida_1h" and elegida[0]["cuenta_esp"] > 15
 cfgn = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": 1e9}})
 assert bot.cuenta_opera([senal("H")], ps_, cfgn, 900, {}) == 0                                      # si nada supera el margen, no compra
