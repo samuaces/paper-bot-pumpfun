@@ -1,2 +1,6 @@
 strat,exit,symbol,mint,t_in,t_out,mc_in,p_ref,reason,pnl,pnl_pct,ambiguous,sin_velas
+basico,relampago_15m,FEEBIE,2LMiWGyNjGKyUkH2oFYmMxzwLzUY84dHZf6DUUZFpump,1.79144e+09,1.79145e+09,30378,3.134e-05,tiempo,-0.498076,-4.98076,False,
+basico,relampago_15m,HNET,Aov3BtQvrGXM5V9oiHu8PKJWeV8a2rFnr24fwWcNpump,1.79144e+09,1791445140,25654,2.679e-05,tiempo,-0.898264,-8.98264,False,
+basico,relampago_15m,BABYBATON,48Fx5EWQ2RSUshqiNzx1VfWSvFwNgMft2nxbqwbXpump,1.79144e+09,1.79145e+09,71404,7.49e-05,tiempo,-0.551215,-5.51215,False,
 basico,relampago_15m,$BITFOOTS,agYKZgcBE2XUzTypkkdJqvwPbu7k5CUZjA6Cm3jpump,1.79144e+09,1791444300,134318,0.000142839,objetivo,1.35854,13.5854,False,
+basico,relampago_15m,NVIDIA,FPNLooNQ51kjE3Y2KTnhxzTFtdBzwacNAcwAPht2pump,1.79144e+09,1791444840,840647,0.000851232,objetivo,1.35854,13.5854,False,
