@@ -69,6 +69,7 @@ CFG = {
         # probar la misma moneda cada hora mientras lo cumpla (esas repeticiones solo con las salidas de
         # una hora o menos). Es de donde sale la mayor parte de lo que aprende.
         "control": {"age_min": [15, 1440], "one_in": 1, "repite_min": 60,
+                    "repite_max": 2,    # repeticiones por pasada como mucho: asi van saliendo de continuo y no todas de golpe
                     "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
                     "sources": ["gt_nuevos", "pump_recientes"]},
         # filtros publicos tipicos
@@ -548,9 +549,11 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
         return 0
     ms = {xn: m for xn, m in modelos(positions, cfg, arch).items()
           if exit_cfg(cfg, xn)["max_hours"] <= c.get("max_horas", 1e9)}
-    cands = []
+    cands, mejor_esp = [], None
     for strat, mint, feat, por_salida in senales:
         d = aprende.mejor({xn: m for xn, m in ms.items() if xn in por_salida}, feat)
+        if d:
+            mejor_esp = d[1] if mejor_esp is None else max(mejor_esp, d[1])
         if d and d[1] > c["margen_pct"]:        # solo si lo aprendido da ganancia esperada tras costes
             cands.append((d[1], d[1], d[0], strat, mint, por_salida))
     cands.sort(key=lambda x: -x[0])
@@ -569,6 +572,8 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
         tomadas += 1
     notes["senales"] = notes.get("senales", 0) + len(senales)
     notes["tomadas"] = notes.get("tomadas", 0) + tomadas
+    notes["cuenta_ronda"] = {"t": int(t), "n": len(senales), "buenas": len(cands), "tomadas": tomadas,
+                             "mejor": None if mejor_esp is None else round(mejor_esp, 1)}
     return tomadas
 
 
@@ -800,7 +805,18 @@ def tick(d):
     calls, pendientes, n_velas, atraso = refresh_exits(positions, snap, cfg, t, notes)
 
     # 2) entradas de prueba (el laboratorio) y, de entre ellas, las que toma la cuenta
-    entradas, senales = 0, []
+    entradas, senales, en_espera = 0, [], []
+
+    def prueba(strat, m, s, w, primera):
+        feat = aprende.rasgos(s, w, t)
+        salidas = [xn for xn in cfg["exits"] if primera or exit_cfg(cfg, xn)["max_hours"] <= 1.0]
+        por_salida = {xn: open_position(strat, m, s, cfg, t, xn, feat) for xn in salidas}
+        positions.extend(por_salida.values())
+        senales.append((strat, m, feat, por_salida))
+        if primera:
+            w["done"].append(strat)
+        w.setdefault("rep_t", {})[strat] = t
+
     if ok:
         for m, w in list(watch.items()):
             s = snap.get(m)
@@ -820,17 +836,23 @@ def tick(d):
                 if not primera and not (repite and t - w.get("rep_t", {}).get(strat, 0) >= repite * 60):
                     continue
                 if wants(strat, s, w, cfg, t):
-                    feat = aprende.rasgos(s, w, t)
-                    salidas = [xn for xn in cfg["exits"] if primera or exit_cfg(cfg, xn)["max_hours"] <= 1.0]
-                    por_salida = {xn: open_position(strat, m, s, cfg, t, xn, feat) for xn in salidas}
-                    positions.extend(por_salida.values())
-                    senales.append((strat, m, feat, por_salida))
                     if primera:
-                        w["done"].append(strat)
-                    w.setdefault("rep_t", {})[strat] = t
-                    entradas += 1
+                        prueba(strat, m, s, w, True)
+                        entradas += 1
+                    else:                           # las repeticiones esperan turno (ver mas abajo)
+                        en_espera.append((w.get("rep_t", {}).get(strat, 0), m, strat, s, w))
             if prunable(s, w, cfg, t):
                 del watch[m]
+        # repeticiones: unas pocas por pasada, primero las que mas llevan esperando. Si muchas monedas
+        # tocan a la vez (pasa al arrancar), se reparten en las pasadas siguientes y ya quedan escalonadas
+        hechas = {}
+        for _, m, strat, s, w in sorted(en_espera, key=lambda x: (x[0], x[1])):
+            tope = cfg["strategies"][strat].get("repite_max")
+            if m not in watch or (tope and hechas.get(strat, 0) >= tope):
+                continue
+            hechas[strat] = hechas.get(strat, 0) + 1
+            prueba(strat, m, s, w, False)
+            entradas += 1
     else:
         aviso("sin foto de mercado: en esta pasada no se evaluan entradas")
     tomadas = cuenta_opera(senales, positions, cfg, t, notes, st.get("archivo"))
@@ -984,7 +1006,7 @@ p{margin:0}.g{color:var(--gris)}.s{font-size:.875rem}
 .act .r{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
 .act .d{grid-column:2/4;color:var(--gris);font-size:.875rem}
 .act.sinhora li{grid-template-columns:minmax(0,1fr) auto}.act.sinhora .d{grid-column:1/3}
-.vacio{padding:16px 14px;color:var(--gris)}
+.act li.vacio{display:block;padding:16px 14px;color:var(--gris)}
 .tabla{overflow-x:auto;background:var(--hoja);border:1px solid var(--raya);border-radius:10px}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.9rem}
 th,td{text-align:right;padding:9px 12px;white-space:nowrap}
@@ -1110,6 +1132,17 @@ def render(d):
                     f"Salida {e(nom_s(p).lower())}: {e(exit_label(cfg, p.get('exit')))}; como tarde se vende a las {hhmm(fin)}.</span></li>")
     cartera = cartera or "<li class='vacio'>Nada en cartera ahora mismo.</li>"
     ganadas = sum(1 for p in ct["cerradas"] if pnl_cuenta(p, cfg) > 0)
+    ro, ronda = st["notes"].get("cuenta_ronda"), ""
+    if ro:                              # por que compro o no la ultima vez que tuvo monedas que valorar
+        cuantas = f"{ro['n']} moneda{'s' if ro['n'] != 1 else ''}"
+        if ro["tomadas"]:
+            ronda = f"A las {hhmm(ro['t'])} valoró {cuantas} y compró {ro['tomadas']}."
+        elif ro["buenas"]:
+            ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas} y {ro['buenas']} apuntaba{'n' if ro['buenas'] != 1 else ''} a ganancia, "
+                     f"pero no compró: las {cfg['cuenta']['huecos']} compras de la cuenta estaban ocupadas o no quedaba saldo libre.")
+        elif ro["mejor"] is not None:
+            ronda = (f"A las {hhmm(ro['t'])} valoró {cuantas}: a la mejor, lo aprendido le daba un resultado esperado de "
+                     f"{es(ro['mejor'])} %. La cuenta solo compra por encima de {es(cfg['cuenta']['margen_pct'], 0)} %, así que no compró.")
 
     # --- monedas en prueba ahora (laboratorio), una linea por moneda
     en_prueba, vivas = {}, ""
@@ -1210,7 +1243,8 @@ def render(d):
 <div><b>{es(ct['saldo'], 2, False)} €</b><span>saldo; empezó con {es(c0, 0, False)} €</span></div>
 <div><b class="{color(ct['resultado'])}">{es(ct['resultado'], 2)} €</b><span>{len(ct['cerradas'])} venta{'s' if len(ct['cerradas']) != 1 else ''}, {ganadas} con ganancia</span></div>
 <div><b>{len(ct['abiertas'])} de {cfg['cuenta']['huecos']}</b><span>compras en cartera</span></div></section>
-<section><h2>Operaciones de la cuenta</h2><ul class="act">{act_cuenta}</ul></section>
+<section><h2>Operaciones de la cuenta</h2><ul class="act">{act_cuenta}</ul>
+<p class="g s" style="margin-top:8px">{ronda}</p></section>
 <section><h2>En cartera ahora</h2><ul class="act sinhora">{cartera}</ul>
 <p class="g s" style="margin-top:8px" id="vivo">Precios del último guardado; cargando los de ahora…</p>
 <p class="g s">El porcentaje es cuánto se ha movido el precio desde la compra, sin descontar costes.</p></section>

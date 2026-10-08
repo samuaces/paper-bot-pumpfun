@@ -308,10 +308,14 @@ assert abs(nueva["cuenta"] - round(min(est["libre"], est["saldo"] / 3), 2)) < 1e
 g2 = mias[1]
 bot._sell(g2, 1.0, g2["p_ref"] * 0.7, 5.0, cfgc, 800, "stop")
 est = bot.cuenta_estado(ps_, cfgc)
-assert abs(est["resultado"] - (g1["pnl"] + g2["pnl"])) < 1e-9 and notas == {"senales": 8, "tomadas": 4}
+assert abs(est["resultado"] - (g1["pnl"] + g2["pnl"])) < 1e-9 and (notas["senales"], notas["tomadas"]) == (8, 4)
+ro_ = notas["cuenta_ronda"]
+assert (ro_["t"], ro_["n"], ro_["buenas"], ro_["tomadas"]) == (700, 1, 1, 1) and isinstance(ro_["mejor"], float)
 assert all(bot.exit_cfg(cfgc, p["exit"])["max_hours"] <= 1 for p in ps_ if p.get("cuenta"))       # la cuenta solo usa salidas cortas
 cfg2 = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True}})                                       # margen normal: +2 %
-assert bot.cuenta_opera([senal("S")], [], cfg2, 0, {}) == 0                                         # sin ejemplos no compra
+nt_ = {}
+assert bot.cuenta_opera([senal("S")], [], cfg2, 0, nt_) == 0                                        # sin ejemplos no compra
+assert nt_["cuenta_ronda"]["buenas"] == 0 and nt_["cuenta_ronda"]["mejor"] == round(-coste, 1)      # y deja dicho por que
 hist = []
 for i in range(120):                                                                                # 120 ejemplos: bs alto gana, bs bajo pierde
     for pre, ft, y in (("a", feat_alta, 30.0), ("b", feat_baja, -20.0)):
@@ -513,6 +517,41 @@ assert len(json.dumps(sta["archivo"])) < 40000
 shutil.rmtree(d3)
 shutil.rmtree(d4)
 print(f"archivo OK: {total_arch} pruebas antiguas fuera del estado; aprendizaje, cifras y cuenta, idénticos")
+
+# --- muchas monedas a repetir a la vez: salen de dos en dos, la que mas espera primero -----
+d5 = tempfile.mkdtemp()
+with open(os.path.join(d5, "config.json"), "w") as f:
+    json.dump({"strategies": {"control": {"age_min": [60, 1440]}}, "cuenta": {"activa": False}}, f)
+guard_m, guard_p = dict(market), list(gt_pools)
+market.clear()
+gt_pools[:] = []
+t5 = T0 + 3 * 86400
+for i in range(5):
+    mm = f"Rep{i}RepRepRepRepRepRepRepRepRepRepRepRepRpump"
+    market[mm] = pair(mm, f"R{i}", f"poolR{i}", 0.0001, 100000, 30000, (t5 - 2 * 3600) * 1000, 3.0, 25.0, 140, 80, 20000, socials=False)
+    gt_pools.append({"attributes": {"address": f"poolR{i}"}, "relationships": {
+        "dex": {"data": {"id": "pumpswap"}}, "base_token": {"data": {"id": "solana_" + mm}}}})
+clock["t"] = t5
+st5 = bot.tick(d5)
+assert len({p["mint"] for p in st5["positions"]}) == 5                       # al arrancar, las cinco a la vez
+por_pasada = []
+for paso in (61, 62, 63, 64):
+    clock["t"] = t5 + paso * 60
+    st5 = bot.tick(d5)
+    por_pasada.append(sorted(p["symbol"] for p in st5["positions"] if p["t_in"] == clock["t"] and p["exit"] == "rapida_1h"))
+assert [len(x) for x in por_pasada] == [2, 2, 1, 0] and sorted(sum(por_pasada, [])) == ["R0", "R1", "R2", "R3", "R4"]
+clock["t"] = t5 + 122 * 60                                                   # una hora despues ya van escalonadas
+st5 = bot.tick(d5)
+assert len({p["mint"] for p in st5["positions"] if p["t_in"] == clock["t"]}) == 2
+assert sorted(p["symbol"] for p in st5["positions"] if p["t_in"] == clock["t"] and p["exit"] == "rapida_1h") == por_pasada[0]
+bot.render(d5)
+pag5 = open(os.path.join(d5, "index.html"), encoding="utf-8").read()
+assert "valoró" not in pag5                                                  # cuenta apagada: no dice nada de rondas
+shutil.rmtree(d5)
+market.clear()
+market.update(guard_m)
+gt_pools[:] = guard_p
+print("repeticiones repartidas OK:", por_pasada)
 
 # --- un estado del metodo anterior se reinicia; el informe sale ----------------------
 bot.render(d)
