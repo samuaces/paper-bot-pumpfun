@@ -287,6 +287,7 @@ print(f"aprendizaje OK: sin datos compra el {tomadas0:.0%} de las señales; con 
 cfgc = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": -1e9, "min_ejemplos": 0, "confianza_z": 0}})
 ps_ = []
 def senal(mint):
+    mint += "pump"                                       # una moneda de pump.fun
     sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
     por = {xn: bot.open_position("basico", mint, sn, cfgc, 0, xn, feat_alta) for xn in cfgc["exits"]}
     ps_.extend(por.values())
@@ -304,7 +305,7 @@ assert abs(bot.pnl_cuenta(g1, cfgc) - g1["pnl"]) < 1e-9                         
 est = bot.cuenta_estado(ps_, cfgc)
 assert abs(est["saldo"] - (30 + g1["pnl"])) < 1e-9 and abs(est["libre"] - (10 + g1["pnl"])) < 1e-9
 assert bot.cuenta_opera([senal("G")], ps_, cfgc, 700, notas) == 1
-nueva = [p for p in ps_ if p.get("cuenta") and p["mint"] == "G"][0]
+nueva = [p for p in ps_ if p.get("cuenta") and p["mint"] == "Gpump"][0]
 assert abs(nueva["cuenta"] - round(min(est["libre"], est["saldo"] / 3), 2)) < 1e-9                  # reparte el saldo en 3
 g2 = mias[1]
 bot._sell(g2, 1.0, g2["p_ref"] * 0.7, 5.0, cfgc, 800, "stop")
@@ -320,10 +321,11 @@ assert nt_["cuenta_ronda"]["buenas"] == 0 and nt_["cuenta_ronda"]["mejor"] is No
 hist = []
 for i in range(120):                                                                                # 120 ejemplos: bs alto gana, bs bajo pierde
     for pre, ft, y in (("a", feat_alta, 30.0), ("b", feat_baja, -20.0)):
-        q = bot.open_position("control", f"{pre}{i}", {"price": 1.0, "mc": 5e4, "pool": "p", "symbol": "h"}, cfg2, i, "rapida_1h", ft)
+        q = bot.open_position("control", f"{pre}{i}pump", {"price": 1.0, "mc": 5e4, "pool": "p", "symbol": "h"}, cfg2, i, "rapida_1h", ft)
         q.update(status="cerrada", pnl_pct=y + (i % 7 - 3), pnl=0.0, t_out=i + 1)
         hist.append(q)
 def senal2(mint, ft):
+    mint += "pump"
     sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
     por = {xn: bot.open_position("control", mint, sn, cfg2, 999, xn, ft) for xn in cfg2["exits"]}
     hist.extend(por.values())
@@ -333,6 +335,7 @@ elegida = [p for p in hist if p.get("cuenta")]
 pocos = bot.deep_merge(cfg2, {"cuenta": {"min_ejemplos": 241}})                                    # con 240 ejemplos y pidiendo 241, espera
 h2_ = [p for p in copy.deepcopy(hist) if not p.pop("cuenta", None)]
 def senal3(mint):
+    mint += "pump"
     sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
     por = {xn: bot.open_position("control", mint, sn, cfg2, 999, xn, feat_alta) for xn in cfg2["exits"]}
     h2_.extend(por.values())
@@ -344,6 +347,7 @@ dudosa = [p for p in copy.deepcopy(hist) if not p.pop("cuenta", None) and p["sta
 for i_, p in enumerate(q for q in dudosa if q["feat"] == feat_alta):   # los buenos, ahora muy dispersos: +10 de media, ±60
     p["pnl_pct"] = 10.0 + (60.0 if i_ % 2 else -60.0)
 def senal4(mint, lista):
+    mint += "pump"
     sn = {"price": 1.0, "mc": 50000, "pool": "p" + mint, "symbol": mint}
     por = {xn: bot.open_position("control", mint, sn, cfg2, 999, xn, feat_alta) for xn in cfg2["exits"]}
     lista.extend(por.values())
@@ -353,7 +357,7 @@ assert bot.cuenta_opera([senal4("DUDA", dudosa)], dudosa, cfg2, 999, nt4) == 0
 ro4 = nt4["cuenta_ronda"]
 assert ro4["mejor"] > cfg2["cuenta"]["margen_pct"] and ro4["mejor"] - ro4["error"] <= cfg2["cuenta"]["margen_pct"]   # esperado positivo, pero no seguro
 assert bot.cuenta_opera([senal4("DUDA2", dudosa)], dudosa, bot.deep_merge(cfg2, {"cuenta": {"confianza_z": 0}}), 999, {}) == 1
-assert [p["mint"] for p in elegida] == ["BUENA"] and elegida[0]["exit"] == "rapida_1h" and elegida[0]["cuenta_esp"] > 15
+assert [p["mint"] for p in elegida] == ["BUENApump"] and elegida[0]["exit"] == "rapida_1h" and elegida[0]["cuenta_esp"] > 15
 cfgn = bot.deep_merge(bot.CFG, {"cuenta": {"activa": True, "margen_pct": 1e9}})
 assert bot.cuenta_opera([senal("H")], ps_, cfgn, 900, {}) == 0                                      # si nada supera el margen, no compra
 ej = bot.ejemplos(ps_ + [dict(g1, strat="impulso")], cfgc)                                          # misma compra por dos filtros: un ejemplo
@@ -447,12 +451,12 @@ for i in range(400):
     for xn in ("x2_1h", "rapida_1h", "relampago_15m"):
         y = max(-99.0, (20 if ft["bs"] >= 1.2 else -15) + rng2.gauss(0, 25)) * (4 if i % 97 == 0 else 1)   # alguna pasa del tope
         t_out = t_in + (900 if xn == "relampago_15m" else 3600)
-        viejo_.append(prueba("control", f"m{i}", t_in, xn, ft, y, t_out, abierta=t_out > AHORA))
+        viejo_.append(prueba("control", f"m{i}pump", t_in, xn, ft, y, t_out, abierta=t_out > AHORA))
         if i % 5 == 0:                                   # la misma compra vista tambien por otro filtro
-            viejo_.append(prueba("basico", f"m{i}", t_in, xn, ft, y, t_out, abierta=t_out > AHORA))
+            viejo_.append(prueba("basico", f"m{i}pump", t_in, xn, ft, y, t_out, abierta=t_out > AHORA))
 for i in range(0, 400, 9):                              # pruebas antiguas sin rasgos, y de una salida que ya no existe
-    viejo_.append(prueba("control", f"s{i}", i * 80.0 + 1, "x2_1h", {}, -12.0 + i % 5, i * 80.0 + 3601))
-    viejo_.append(prueba("control", f"q{i}", i * 80.0 + 2, "quitada", rasgos_al_azar(), 33.0, i * 80.0 + 3602))
+    viejo_.append(prueba("control", f"s{i}pump", i * 80.0 + 1, "x2_1h", {}, -12.0 + i % 5, i * 80.0 + 3601))
+    viejo_.append(prueba("control", f"q{i}pump", i * 80.0 + 2, "quitada", rasgos_al_azar(), 33.0, i * 80.0 + 3602))
 de_cuenta = [p for p in viejo_ if p["status"] == "cerrada" and p["exit"] == "rapida_1h" and p["strat"] == "basico"][:6]
 for p in de_cuenta:                                      # seis antiguas son de la cuenta (y tienen gemela en control)
     p["cuenta"], p["cuenta_esp"] = 8.0, 5.0
@@ -475,9 +479,9 @@ def compraria(st_):
     sen = []
     for i_, ft in enumerate(sonda):
         sn = {"price": 1.0, "mc": 50000, "pool": f"pz{i_}", "symbol": f"z{i_}"}
-        por = {xn: bot.open_position("control", f"z{i_}", sn, cfga, AHORA, xn, ft) for xn in cfga["exits"]}
+        por = {xn: bot.open_position("control", f"z{i_}pump", sn, cfga, AHORA, xn, ft) for xn in cfga["exits"]}
         ps_c.extend(por.values())
-        sen.append(("control", f"z{i_}", ft, por))
+        sen.append(("control", f"z{i_}pump", ft, por))
     bot.cuenta_opera(sen, ps_c, cfga, AHORA, {}, st_.get("archivo"))
     return sorted((p["mint"], p["exit"], p["cuenta"], p["cuenta_esp"]) for p in ps_c if p.get("cuenta"))
 def iguales(a, b, tol=1e-6):
@@ -577,6 +581,144 @@ market.update(guard_m)
 gt_pools[:] = guard_p
 print("repeticiones repartidas OK:", por_pasada)
 
+# --- monedas de fuera de pump.fun: se observan aparte; ni se aprende de ellas ni se compran ----
+d6 = tempfile.mkdtemp()
+with open(os.path.join(d6, "config.json"), "w") as f:
+    json.dump({"cuenta": {"activa": True, "margen_pct": -1e9, "min_ejemplos": 0, "confianza_z": 0}}, f)   # compraria lo que fuera
+guard_m, guard_p, guard_c = dict(market), list(gt_pools), dict(candles)
+market.clear()
+gt_pools[:] = []
+t6 = T0 + 5 * 86400
+DENTRO, FUERA = "DentroDentroDentroDentroDentroDentroDenpump", "FueraFueraFueraFueraFueraFueraFueraFuera1234"
+for mm, sym, pool in ((DENTRO, "DEN", "poolD"), (FUERA, "FUE", "poolX")):
+    market[mm] = pair(mm, sym, pool, 0.0001, 100000, 30000, (t6 - 2 * 3600) * 1000, 3.0, 25.0, 140, 80, 20000)
+    gt_pools.append({"attributes": {"address": pool}, "relationships": {
+        "dex": {"data": {"id": "pumpswap"}}, "base_token": {"data": {"id": "solana_" + mm}}}})
+assert bot.es_pump(DENTRO) and not bot.es_pump(FUERA)
+clock["t"] = t6
+st6 = bot.tick(d6)
+por_m = {m: sorted({p["strat"] for p in st6["positions"] if p["mint"] == m}) for m in (DENTRO, FUERA)}
+assert por_m == {DENTRO: ["basico", "control", "impulso"], FUERA: ["fuera"]}, por_m      # cada una, a su grupo
+assert sorted(p["exit"] for p in st6["positions"] if p["mint"] == FUERA) == sorted(bot.CFG["exits"])
+compradas = [p["mint"] for p in st6["positions"] if p.get("cuenta")]
+assert compradas == [DENTRO] and st6["notes"]["cuenta_ronda"]["n"] == 3               # la de fuera, ni valorada
+candles["poolD"] = [[t6 // 60 * 60, 0.0001, 0.0001, 0.0001, 0.0001, 1], [t6 // 60 * 60 + 60, 0.0001, 0.0001, 0.00005, 0.00005, 1]]
+candles["poolX"] = [[t6 // 60 * 60, 0.0001, 0.0001, 0.0001, 0.0001, 1], [t6 // 60 * 60 + 60, 0.0001, 0.00025, 0.0001, 0.00025, 1]]
+clock["t"] = t6 + 300
+st6 = bot.tick(d6)
+cerr6 = [p for p in st6["positions"] if p["status"] == "cerrada"]
+assert {p["mint"] for p in cerr6} == {DENTRO, FUERA} and all(p["pnl_pct"] > 40 for p in cerr6 if p["mint"] == FUERA)
+ej6 = bot.ejemplos(st6["positions"], bot.CFG)
+n_dentro = len({(p["t_in"], p["exit"]) for p in cerr6 if p["mint"] == DENTRO})
+assert sum(len(v) for v in ej6.values()) == n_dentro > 0                               # de la de fuera (que gano) no aprende
+assert bot.stats(st6["positions"], "fuera", "rapida_1h", bot.CFG)["n"] == 1 and bot.stats(st6["positions"], "control", "rapida_1h", bot.CFG)["n"] == 1
+bot.render(d6)
+assert "De fuera de pump.fun, solo observadas" in open(os.path.join(d6, "index.html"), encoding="utf-8").read()
+shutil.rmtree(d6)
+market.clear()
+market.update(guard_m)
+gt_pools[:] = guard_p
+candles.clear()
+candles.update(guard_c)
+print("monedas de fuera de pump.fun OK: se observan, no se compran, no se aprende de ellas")
+
+# --- lo que ya habia de monedas de fuera se aparta una sola vez (estado antiguo, con todo mezclado) ----
+d7 = tempfile.mkdtemp()
+rng3 = random.Random(5)
+mezcla = []
+def antigua(strat, mint, t_in, xn, y, cerrada=True, cuenta=None, ft=None):
+    q = bot.open_position(strat, mint, {"price": 1.0, "mc": 5e4, "pool": "p" + mint, "symbol": mint[:4]}, cfga, t_in, xn, ft or rasgos_al_azar())
+    if cerrada:
+        q.update(status="cerrada", reason="tiempo", pnl_pct=y, pnl=y / 10, proceeds=10 + y / 10 + 0.10, n_tx=2,
+                 tp_done=y > 40, t_out=t_in + 3600, frac_left=0.0)
+    if cuenta:
+        q["cuenta"], q["cuenta_esp"] = cuenta, 5.0
+    return q
+for i in range(120):
+    de_fuera = i % 3 == 0
+    mint, ft_ = f"x{i}" + ("" if de_fuera else "pump"), rasgos_al_azar()
+    for xn in ("x2_1h", "rapida_1h"):
+        y = (40.0 if de_fuera else -15.0) + rng3.gauss(0, 20)
+        mezcla.append(antigua("control", mint, i * 60.0, xn, y, cuenta=8.0 if i in (3, 4, 10) and xn == "x2_1h" else None, ft=ft_))   # la 10 tiene gemela por el filtro
+        if i % 10 == 0:
+            mezcla.append(antigua("basico", mint, i * 60.0, xn, y, ft=ft_))          # la misma compra, por otro filtro
+mezcla += [antigua("control", "abiertaXX", 9 * 3600.0, "x2_1h", 0, cerrada=False),
+           antigua("basico", "abiertaXX", 9 * 3600.0, "x2_1h", 0, cerrada=False),
+           antigua("control", "abiertapump", 9 * 3600.0, "x2_1h", 0, cerrada=False)]
+st7 = {"positions": copy.deepcopy(mezcla), "archivo": {"origen": "pump"}, "last_tick": AHORA, "notes": {},
+       "watch": {"x0": {"done": ["control", "basico"], "rep_t": {"control": 77.0}}, "x3": {"done": [], "rep_t": {}},
+                 "x1pump": {"done": ["control"], "rep_t": {"control": 5.0}}}}
+viejo_cod = bot.es_pump
+bot.es_pump = lambda m: True                             # como antes del 9/10: todo se trataba igual
+assert bot.archiva(d7, st7, cfga, AHORA) > 250
+bot.es_pump = viejo_cod
+st7["archivo"].pop("origen")                             # un archivo de los de antes, mezclado
+st7 = json.loads(json.dumps(st7))
+mezclado = copy.deepcopy(st7["archivo"])
+assert iguales(bot.rehace_archivo(d7, st7, cfga, separa=False), mezclado)            # el detalle reproduce el resumen
+assert mezclado["ej"]["x2_1h"]["n"] == 117 and "fuera/x2_1h" not in mezclado["reglas"]
+roto = copy.deepcopy(st7)                                # si el detalle no cuadra, no se toca nada
+roto["archivo"]["n"] += 1
+bot.DIAG.clear()
+assert bot.separa_fuera(d7, roto, cfga) == 0 and roto["archivo"] == dict(mezclado, n=mezclado["n"] + 1)
+assert "apartar las monedas de fuera" in bot.DIAG["avisos"][0] and all(p["strat"] != "fuera" for p in roto["positions"])
+movidas = bot.separa_fuera(d7, st7, cfga)
+st7 = json.loads(json.dumps(st7))
+a7 = st7["archivo"]
+assert a7["origen"] == "pump" and bot.separa_fuera(d7, st7, cfga) == 0                # una sola vez
+pos7 = st7["positions"]
+assert all(bot.es_pump(p["mint"]) != (p["strat"] == "fuera") for p in pos7)
+assert sorted((p["mint"], p["strat"]) for p in pos7 if p["status"] == "abierta") == [("abiertaXX", "fuera"), ("abiertapump", "control")]
+assert movidas == 3 and sum(1 for p in pos7 if p.get("cuenta")) == 3                  # x3 de la cuenta + las dos abiertas de fuera
+directas = [p for p in mezcla if p["status"] == "cerrada"]
+unicos = {}
+for p in directas:
+    if bot.es_pump(p["mint"]):
+        unicos[bot.clave_ej(p)] = p
+for xn in ("x2_1h", "rapida_1h"):
+    filas_d = [(aprende.vector(p["feat"]), bot.resultado_ej(p, cfga)) for p in unicos.values() if p["exit"] == xn]
+    m_dir = aprende.fit(filas_d, -bot.coste_pct(cfga))
+    m_bot = bot.modelos(pos7, cfga, a7)[xn]
+    assert m_bot["n"] == len(filas_d) == 80 and all(iguales(aprende.predice(m_dir, aprende.vector(f)), aprende.predice(m_bot, aprende.vector(f))) for f in sonda)
+    de_f = [p["pnl_pct"] for p in directas if not bot.es_pump(p["mint"]) and p["strat"] == "control" and p["exit"] == xn]
+    de_p = [p["pnl_pct"] for p in directas if bot.es_pump(p["mint"]) and p["strat"] == "control" and p["exit"] == xn]
+    sf, sp_ = bot.stats(pos7, "fuera", xn, cfga, a7), bot.stats(pos7, "control", xn, cfga, a7)
+    assert sf["n"] == len(de_f) == 40 and abs(sf["media"] - sum(de_f) / 40) < 1e-6 and sf["media"] > 25
+    assert sp_["n"] == len(de_p) == 80 and abs(sp_["media"] - sum(de_p) / 80) < 1e-6 and sp_["media"] < -8
+assert bot.stats(pos7, "basico", "x2_1h", cfga, a7)["n"] == 8                         # las 4 de fuera por el filtro, descartadas
+assert st7["watch"] == {"x0": {"done": ["fuera"], "rep_t": {"fuera": 77.0}}, "x3": {"done": [], "rep_t": {}},
+                        "x1pump": {"done": ["control"], "rep_t": {"control": 5.0}}}
+assert abs(bot.cuenta_estado(pos7, cfga)["saldo"] - bot.cuenta_estado(mezcla, cfga)["saldo"]) < 1e-9   # la cuenta no cambia
+antes_ej = {xn: r["n"] for xn, r in a7["ej"].items()}                                   # y lo que se archive despues, igual
+pos7 += [dict(antigua("fuera", "nuevaXX", 100.0, "x2_1h", 50.0), strat="fuera"), antigua("control", "nuevapump", 100.0, "x2_1h", -20.0)]
+st7["positions"] = pos7
+assert bot.archiva(d7, st7, cfga, AHORA) == 2
+assert st7["archivo"]["ej"]["x2_1h"]["n"] == antes_ej["x2_1h"] + 1                    # solo cuenta la de pump.fun
+assert st7["archivo"]["reglas"]["fuera/x2_1h"]["n"] == 40 and st7["archivo"]["reglas"]["control/x2_1h"]["n"] == 79
+shutil.rmtree(d7)
+print(f"separacion de lo antiguo OK: {movidas} pruebas del estado y las archivadas, cada una a su grupo")
+
+# --- turnos de revision: primero lo vencido; la salida de 24 h y las de fuera esperan mas; la cuenta, menos ----
+pedidos = []
+_gb, _gr = bot.gt_bars, bot.gt_ready
+bot.gt_bars = lambda pool, mint, since, until, cfg_: pedidos.append(pool) or []
+bot.gt_ready = lambda cfg_: True
+def abierta(pool, mint, xn, hace_s, cuenta=None, t_in=None):
+    q = bot.open_position("control", mint, {"price": 1.0, "mc": 5e4, "pool": pool, "symbol": pool}, bot.CFG, 100000.0 - 3000 if t_in is None else t_in, xn)
+    q.update(rebased=True, last_check=100000.0 - hace_s)
+    if cuenta:
+        q["cuenta"] = cuenta
+    return q
+cola = [abierta("solo_larga", "apump", "x2_24h", 1500),          # lleva 25 min sin revisar, pero solo le queda la de 24 h
+        abierta("corta", "bpump", "x2_24h", 900), abierta("corta", "bpump", "rapida_1h", 900),
+        abierta("de_fuera", "cXYZ", "rapida_1h", 1300),          # de fuera: espera 10 min mas
+        abierta("de_cuenta", "dpump", "rapida_1h", 600, cuenta=5.0),
+        abierta("vencida", "epump", "rapida_1h", 400, t_in=100000.0 - 4000)]
+bot.refresh_exits(cola, {}, bot.deep_merge(bot.CFG, {"gt": {"candle_calls": 10}}), 100000.0, {})
+assert pedidos == ["vencida", "de_cuenta", "corta", "de_fuera", "solo_larga"], pedidos
+bot.gt_bars, bot.gt_ready = _gb, _gr
+print("turnos de revision OK:", pedidos)
+
 # --- un estado del metodo anterior se reinicia; el informe sale ----------------------
 bot.render(d)
 page = open(os.path.join(d, "index.html"), encoding="utf-8").read()
@@ -587,7 +729,7 @@ del viejo["v"]
 json.dump(viejo, open(os.path.join(d, "estado.json"), "w"))
 _, st2 = bot.load(d)
 assert st2["positions"] == [] and st2["ticks"] == 0 and all(w["done"] == [] for w in st2["watch"].values())
-for s in bot.CFG["strategies"]:
+for s in ("control", "basico", "impulso"):
     x = bot.stats(st["positions"], s, "x2_24h", bot.CFG)
     print(f"  {s}: {x['n']} cerradas, media {x['media']:+.1f}%, {x['veredicto']}")
 shutil.rmtree(d)

@@ -80,6 +80,13 @@ CFG = {
                     "need_x": True, "need_tg": True,
                     "chg_h1_min": 0.0, "chg_m5_min": -10.0, "buy_sell_h1_min": 1.2,
                     "txns_h1_min": 60, "vol_h1_min": 3000, "mc_vs_max_min": 0.5},
+        # monedas que cotizan en el mismo mercado pero NO salieron de pump.fun (su direccion no acaba en
+        # "pump"): alguien las crea por su cuenta, muchas veces en serie y con la liquidez en su mano. Aqui
+        # solo se observan, con la misma regla que el control: ni entran en lo que aprende la cuenta ni
+        # la cuenta las compra, porque la simulacion no puede saber si dejan vender.
+        "fuera": {"fuera": True, "age_min": [15, 1440], "one_in": 1, "repite_min": 60, "repite_max": 1,
+                  "mc_min": 20000, "mc_max": 2000000, "liq_min": 10000,
+                  "sources": ["gt_nuevos", "pump_recientes"]},
     },
     "min_trades_verdict": 50,
     # la cuenta: un saldo unico que solo compra lo que el aprendizaje ve con ganancia tras costes.
@@ -99,7 +106,11 @@ CFG = {
            "max_gap_s": 90.0,
            "tick_budget_s": 40,   # dentro de una pasada, no se empiezan llamadas pasado este tiempo
            "settle_s": 120,       # antiguedad minima de una vela para darla por buena
-           "fallback_min": 30},   # moneda sin velas (error que no es de cupo) tanto tiempo: foto de mercado
+           "fallback_min": 30,    # moneda sin velas (error que no es de cupo) tanto tiempo: foto de mercado
+           # turnos de revision: va primero lo que mas lleva esperando, pero esperan este tiempo de mas...
+           "espera_larga_s": 1200,    # ...las monedas a las que solo les queda abierta la salida de 24 h
+           "espera_fuera_s": 600,     # ...las que no son de pump.fun
+           "prisa_cuenta_s": 600},    # y este tiempo de menos las que la cuenta tiene compradas
 }
 
 STATE_V = 3     # 3: las ventas se apuntan al peor precio entre su nivel y el cierre del minuto
@@ -123,6 +134,11 @@ def log(msg):
 def aviso(msg):
     DIAG.setdefault("avisos", []).append(msg)
     log("  aviso: " + msg)
+
+
+def es_pump(mint):
+    """Las monedas creadas en pump.fun tienen una direccion que acaba en "pump"."""
+    return str(mint).endswith("pump")
 
 
 def exit_cfg(cfg, name):
@@ -453,9 +469,20 @@ def refresh_exits(positions, snap, cfg, t, notes):
     def vencida(q):
         return until >= q["t_in"] + exit_cfg(cfg, q.get("exit"))["max_hours"] * 3600
 
+    g = cfg["gt"]
+
     def prioridad(pool):
         ps = by_pool[pool]
-        return (0 if any(vencida(q) for q in ps) else 1, min(q["last_check"] for q in ps))
+        espera = min(q["last_check"] for q in ps)
+        if any(vencida(q) for q in ps):
+            return (0, espera)
+        if all(exit_cfg(cfg, q.get("exit"))["max_hours"] > 1.0 for q in ps):
+            espera += g.get("espera_larga_s", 0)
+        if not es_pump(ps[0]["mint"]):
+            espera += g.get("espera_fuera_s", 0)
+        if any(q.get("cuenta") for q in ps):
+            espera -= g.get("prisa_cuenta_s", 0)
+        return (1, espera)
 
     calls, pendientes, n_velas, ratios = 0, 0, 0, []
     for pool in sorted(by_pool, key=prioridad):
@@ -511,8 +538,8 @@ def ejemplos(positions, cfg):
     filas, vistos = {xn: [] for xn in cfg["exits"]}, set()
     for p in positions:
         xn = p.get("exit", DEFAULT_EXIT)
-        if p["status"] != "cerrada" or not p.get("feat") or xn not in filas:
-            continue
+        if p["status"] != "cerrada" or not p.get("feat") or xn not in filas or not es_pump(p["mint"]):
+            continue                              # de las monedas de fuera de pump.fun no se aprende
         k = clave_ej(p)
         if k in vistos:
             continue
@@ -548,6 +575,7 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
     """De las compras de prueba de esta pasada, la cuenta toma las que el aprendizaje ve con ganancia.
     senales: [(filtro, moneda, rasgos, {salida: posicion})]. Devuelve cuantas ha tomado."""
     c = cfg["cuenta"]
+    senales = [x for x in senales if es_pump(x[1])]     # la cuenta nunca compra monedas de fuera de pump.fun
     if not c.get("activa") or not senales:
         return 0
     ms = {xn: m for xn, m in modelos(positions, cfg, arch).items()
@@ -586,10 +614,12 @@ def cuenta_opera(senales, positions, cfg, t, notes, arch=None):
 
 def wants(strat, s, w, cfg, t):
     r = cfg["strategies"][strat]
+    if bool(r.get("fuera")) == es_pump(w["mint"]):      # las de pump.fun, a sus reglas; las de fuera, a la suya
+        return False
     age = (t - s["created"]) / 60.0
     if not (r["age_min"][0] <= age <= r["age_min"][1]):
         return False
-    if strat == "control":              # a ciegas: una de cada N, solo con el mismo tamano minimo que los filtros
+    if "one_in" in r:                   # a ciegas: una de cada N, solo con el mismo tamano minimo que los filtros
         if w.get("source") not in r["sources"]:
             return False
         if int(hashlib.sha256(w["mint"].encode()).hexdigest(), 16) % int(r["one_in"]) != 0:
@@ -619,6 +649,88 @@ def prunable(s, w, cfg, t):
 
 
 # ---------------------------------------------------------------- estado y pasada
+
+def _suma_regla(reglas, clave, pnl_pct, pnl, tp_done):
+    r = reglas.setdefault(clave, {"n": 0, "s1": 0.0, "s2": 0.0, "x2": 0, "total": 0.0, "peor": pnl_pct, "mejor": pnl_pct})
+    r["n"] += 1
+    r["s1"] += pnl_pct
+    r["s2"] += pnl_pct ** 2
+    r["x2"] += 1 if tp_done else 0
+    r["total"] += pnl
+    r["peor"], r["mejor"] = min(r["peor"], pnl_pct), max(r["mejor"], pnl_pct)
+
+
+def rehace_archivo(d, st, cfg, separa=True):
+    """Rehace el resumen del archivo (ejemplos y cifras por regla) desde el detalle guardado en
+    <dir>/archivo/vN-*.csv. Con separa=True aparta las monedas de fuera de pump.fun: sus ejemplos dejan
+    de contar y sus cifras pasan a la regla "fuera" (solo las pruebas del control; las de los filtros se
+    descartan para no contar dos veces la misma compra). Devuelve el archivo nuevo sin tocar el estado;
+    si el detalle no cuadra con lo archivado, falla en vez de inventar."""
+    viejo = st.get("archivo") or {}
+    carpeta, filas = os.path.join(d, "archivo"), {}
+    for nombre in sorted(os.listdir(carpeta)) if os.path.isdir(carpeta) else []:
+        if nombre.startswith(f"v{STATE_V}-") and nombre.endswith(".csv"):
+            with open(os.path.join(carpeta, nombre), newline="", encoding="utf-8", errors="backslashreplace") as f:
+                for r in csv.DictReader(f):
+                    filas.setdefault(r["id"], r)     # tras un guardado fallido el detalle puede estar repetido
+    if len(filas) != viejo.get("n", 0):
+        raise ValueError(f"el detalle tiene {len(filas)} pruebas y el resumen dice {viejo.get('n', 0)}")
+    siguen = {clave_ej(p) for p in st["positions"]}
+    tope = cfg["aprende"]["tope_pct"]
+    por_salida, reglas, vistos, n = {}, {}, set(), 0
+    for r in filas.values():
+        pump, strat, xn, y = es_pump(r["mint"]), r["strat"], r["exit"], float(r["pnl_pct"])
+        if separa and not pump:
+            if strat != "control":
+                continue
+            strat = "fuera"
+        n += 1
+        k = (r["mint"], int(r["t_in"]), xn)
+        feat = {key: float(r["f_" + key]) for key, _, _ in aprende.FEATS if r.get("f_" + key) not in (None, "")}
+        if feat and (pump or not separa) and k not in vistos and k not in siguen:
+            vistos.add(k)
+            por_salida.setdefault(xn, []).append((aprende.vector(feat), max(-100.0, min(tope, y))))
+        _suma_regla(reglas, f"{strat}/{xn}", y, float(r["pnl"]), r["tp_done"] == "True")
+    nuevo = dict(viejo, ej={xn: aprende.resumen(rows) for xn, rows in por_salida.items()}, reglas=reglas,
+                 firma=firma_ej(cfg), n=n)
+    if separa:
+        nuevo["origen"] = "pump"
+    return nuevo
+
+
+def separa_fuera(d, st, cfg):
+    """Se hace una sola vez. Hasta el 9/10/2026 el bot trataba igual a las monedas de pump.fun y a las
+    que solo cotizan en el mismo mercado. Aqui se aparta lo que ya habia de las de fuera: sus pruebas
+    pasan a la regla "fuera", dejan de contar en lo aprendido y en las cifras de las demas reglas, y en
+    la lista de vigilancia quedan apuntadas a su grupo. Si algo falla no se toca nada y se reintenta.
+    Devuelve cuantas pruebas del estado ha movido o quitado."""
+    arch = st.get("archivo") or {}
+    if arch.get("origen") == "pump":
+        return 0
+    try:
+        nuevo = rehace_archivo(d, st, cfg) if arch.get("n") else dict(arch, origen="pump")
+        quedan, mueve = [], []
+        for p in st["positions"]:
+            if es_pump(p["mint"]) or p["strat"] == "fuera":
+                quedan.append(p)
+            elif p.get("cuenta") or p["strat"] == "control":   # las de los filtros repetian la misma compra: fuera
+                quedan.append(p)
+                mueve.append(p)
+        n = len(st["positions"]) - len(quedan) + len(mueve)
+    except Exception as e:
+        aviso(f"no se pudieron apartar las monedas de fuera de pump.fun ({type(e).__name__}: {e}); se reintentara")
+        return 0
+    for p in mueve:                     # a partir de aqui nada puede fallar
+        p["strat"] = "fuera"
+    st["positions"][:] = quedan
+    for m, w in st["watch"].items():
+        if not es_pump(m):
+            rep_t = w.get("rep_t", {})
+            w["done"] = ["fuera"] if "control" in w.get("done", []) else []
+            w["rep_t"] = {"fuera": rep_t["control"]} if "control" in rep_t else {}
+    st["archivo"] = nuevo
+    return n
+
 
 def load(d):
     cfg = CFG
@@ -732,20 +844,15 @@ def archiva(d, st, cfg, t):
         for p in fuera:
             xn = p.get("exit", DEFAULT_EXIT)
             k = clave_ej(p)
-            if p.get("feat") and k not in vistos and k not in siguen:
+            if p.get("feat") and es_pump(p["mint"]) and k not in vistos and k not in siguen:
                 vistos.add(k)
                 nuevos.setdefault(xn, []).append((aprende.vector(p["feat"]), resultado_ej(p, cfg)))
-            r = reglas.setdefault(f"{p['strat']}/{xn}", {"n": 0, "s1": 0.0, "s2": 0.0, "x2": 0, "total": 0.0,
-                                                        "peor": p["pnl_pct"], "mejor": p["pnl_pct"]})
-            r["n"] += 1
-            r["s1"] += p["pnl_pct"]
-            r["s2"] += p["pnl_pct"] ** 2
-            r["x2"] += 1 if p["tp_done"] else 0
-            r["total"] += p["pnl"]
-            r["peor"], r["mejor"] = min(r["peor"], p["pnl_pct"]), max(r["mejor"], p["pnl_pct"])
+            _suma_regla(reglas, f"{p['strat']}/{xn}", p["pnl_pct"], p["pnl"], p["tp_done"])
         for xn, rows in nuevos.items():
             ej[xn] = aprende.resumen(rows, ej.get(xn))
         arch = dict(viejo, ej=ej, reglas=reglas, firma=firma, n=viejo.get("n", 0) + len(fuera))
+        if not viejo.get("n"):
+            arch["origen"] = "pump"     # nace ya con las monedas de fuera apartadas (ver separa_fuera)
         if viejo.get("ej") and viejo.get("firma") != firma:
             arch["ej_apartado"] = viejo["ej"]
         filas = [fila_csv(p, COLS_ARCH) for p in fuera]
@@ -774,6 +881,7 @@ def tick(d):
     _gt["gap"] = max(_gt["gap"], st["notes"].get("gt_gap", 0.0))
     t = now()
     uni = cfg["universe"]
+    separa_fuera(d, st, cfg)
     watch, positions, notes = st["watch"], st["positions"], st["notes"]
 
     found = discover_pump()
@@ -912,11 +1020,11 @@ def stats(positions, strat, exit_name, cfg, arch=None):
     if n < cfg["min_trades_verdict"]:
         out["veredicto"] = f"faltan {cfg['min_trades_verdict'] - n} operaciones"
     elif out["lo"] > 0:
-        out["veredicto"] = "gana en simulacion"
+        out["veredicto"] = "gana en simulación"
     elif out["hi"] < 0:
         out["veredicto"] = "pierde"
     else:
-        out["veredicto"] = "sin conclusion"
+        out["veredicto"] = "sin conclusión"
     return out
 
 
@@ -976,7 +1084,8 @@ def pct(v, signo=True):
     return "–" if v is None else (f"{v:+.1f}%" if signo else f"{v:.0f}%")
 
 
-NOMBRES = {"control": "Control, a ciegas", "basico": "Filtro básico", "impulso": "Filtro de impulso"}
+NOMBRES = {"control": "Control, a ciegas", "basico": "Filtro básico", "impulso": "Filtro de impulso",
+           "fuera": "De fuera de pump.fun, solo observadas"}
 SALIDAS = {"x2_24h": "Larga", "x2_1h": "x2 rápida", "rapida_1h": "Rápida", "relampago_15m": "Relámpago"}
 MOTIVOS = {"objetivo": "objetivo", "stop": "stop", "tiempo": "fin de plazo", "sin_datos": "desaparecida",
            "stop_tras_objetivo": "stop tras objetivo", "objetivo_y_tiempo": "objetivo y fin de plazo"}
@@ -1269,7 +1378,7 @@ def render(d):
 <section><details><summary>Laboratorio: las pruebas con las que aprende</summary>
 <p class="g s" style="margin-bottom:10px">Aparte de la cuenta, el bot prueba muchas más monedas con {es(cfg['stake_eur'], 0, False)} € de mentira cada una y todas las salidas a la vez. De ahí salen los ejemplos de los que aprende. Lleva {n_lab_ce} pruebas cerradas y {n_lab_ab} abiertas.</p>
 <h2>Resultado medio de cada regla</h2><ul class="act sinhora">{filas}</ul>
-<p class="g s" style="margin:8px 0 18px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop.</p>
+<p class="g s" style="margin:8px 0 18px">Cada salida es un objetivo, un stop y un tiempo máximo. Acertar es tocar el objetivo antes que el stop. Las monedas «de fuera de pump.fun» cotizan en el mismo mercado pero las crea alguien por su cuenta, a menudo en serie y con la liquidez en su mano; la simulación no puede saber si dejan vender, así que solo se observan: la cuenta no las compra ni aprende de ellas.</p>
 <h2>Últimas pruebas</h2><ul class="act">{act_lab}</ul></details></section>
 <section><h2>Salud del bot</h2><ul class="salud g">{''.join(f'<li>{x}</li>' for x in lineas)}</ul></section>
 <p class="g s">Simulación con precios reales y ejecución supuesta. Cuando una moneda se hunde de golpe se apunta vendida al precio ya hundido, no al del stop, porque un stop no llega a tiempo. Aun así, con dinero real hay monedas que no dejan vender, así que un resultado positivo aquí no garantiza ganar. El tamaño de cada moneda se da en dólares, como en pump.fun. Registro iniciado el {fmt_t(st['started'])}.</p>
