@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_1h:7b6dX3nE25xrfNViEKZHL9wVJFcBxQYuWPpmzHUxx28H:1791734399,fuera,x2_1h,ROSE,7b6dX3nE25xrfNViEKZHL9wVJFcBxQYuWPpmzHUxx28H,1791734399,1791738000,173256,0.0001769,0.00018016827,tiempo,-0.92947575,-9.2947575,False,False,,,257.6,173256,38650,-16.1,-14.6,1.02,450,0.99,0.4,0
