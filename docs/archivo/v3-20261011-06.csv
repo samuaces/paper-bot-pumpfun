@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:DUxFoFeYiGDi5Aos6uu6mVMqiReKCQ1yeDu5UXR52n9H:1791687996,fuera,rapida_1h,CCAT,DUxFoFeYiGDi5Aos6uu6mVMqiReKCQ1yeDu5UXR52n9H,1791687996,1791691200,37799,3.924e-05,3.924e-05,stop,-2.8429232,-28.429232,False,False,,,138.3,37799,15559,-19.9,-2,1.04,108,0.4,0.64,0
