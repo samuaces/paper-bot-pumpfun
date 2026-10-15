@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:DAQw76NKrKcRBePBjSwoR83dNaNtRPG2zkaQs9Y71Nx:1792092046,fuera,rapida_1h,TOAST,DAQw76NKrKcRBePBjSwoR83dNaNtRPG2zkaQs9Y71Nx,1792092046,1792094400,79745,7.974e-07,7.974e-07,objetivo,4.2134211,42.134211,True,False,,,15.7,79745,126405,62.9,11.6,1.97,2707,9.17,1,0
+fuera/rapida_1h:BixDb1FNqWPhLKpH47rJcSetQtA7JAGX2qEdNrt5JQpe:1792092682,fuera,rapida_1h,MAGIC SI,BixDb1FNqWPhLKpH47rJcSetQtA7JAGX2qEdNrt5JQpe,1792092682,1792094400,491756,0.0004917,0.00050920291,objetivo,4.2231779,42.231779,True,False,,,15.2,491756,58758,1017,13.5,1.39,11101,0.42,1,0
