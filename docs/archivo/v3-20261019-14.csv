@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:C1DTU2bWPNDQ7MrdgKTA9Ndcf3kBRXK1wF4siNE3cya4:1792411137,fuera,relampago_15m,ELON,C1DTU2bWPNDQ7MrdgKTA9Ndcf3kBRXK1wF4siNE3cya4,1792411137,1792411200,28136,2.962e-05,3.2047129e-05,stop,-1.9357886,-19.357886,False,False,,,89.7,28136,13691,-11.2,69.8,0.98,973,3.73,0.37,0
