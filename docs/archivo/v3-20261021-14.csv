@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:GXwGpiKG8QNuHQ4podepqMWZPZLg3Er7iMLSDH9kpump:1792583062,control,relampago_15m,CUMROCKET,GXwGpiKG8QNuHQ4podepqMWZPZLg3Er7iMLSDH9kpump,1792583062,1792584000,49695,5.099e-05,5.099e-05,tiempo,0.52928697,5.2928697,False,False,,,1109.1,49695,20645,-18.1,-15.6,0.85,63,0.17,0.13,0
+fuera/rapida_1h:DQ8tqaS6wV6AzqB4K6Krh15c71sGufKTWEzPhNqNUMgN:1792583386,fuera,rapida_1h,Truth,DQ8tqaS6wV6AzqB4K6Krh15c71sGufKTWEzPhNqNUMgN,1792583386,1792584000,21035,2.103e-05,2.103e-05,objetivo,4.2231779,42.231779,True,False,,,24.4,21035,27949,131,37.1,4.41,2872,4.03,1,0
