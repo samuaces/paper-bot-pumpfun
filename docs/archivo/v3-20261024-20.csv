@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:1hy4VvRmw6iFkZwBAgpkuRTQn6KokLbqxjDGBSxpump:1792864560,control,rapida_1h,swordtrump,1hy4VvRmw6iFkZwBAgpkuRTQn6KokLbqxjDGBSxpump,1792864560,1792864800,791198,0.0007911,0.00088699425,objetivo,0.89018733,8.9018733,True,False,,,15.2,791198,75274,1447,5.8,1.95,8164,10.01,1,1
