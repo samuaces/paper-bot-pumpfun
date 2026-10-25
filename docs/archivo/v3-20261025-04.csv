@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:BvP5kfxFcJ69DA7XJzZcRkyRkqYpPsBA3HSuZbTppump:1792892853,control,relampago_15m,WASTED,BvP5kfxFcJ69DA7XJzZcRkyRkqYpPsBA3HSuZbTppump,1792892853,1792893753,21194,2.205e-05,2.205e-05,tiempo,-0.55121475,-5.5121475,False,False,,,258.4,21194,11169,1,-1.1,0.76,30,0.06,0.36,0
