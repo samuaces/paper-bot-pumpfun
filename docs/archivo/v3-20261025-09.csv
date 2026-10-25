@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:H2V39Gt4JNzmw8xHqG2m7dC7wKFzcGizRx33u8ou6BGN:1792909838,fuera,rapida_1h,NEX Ai,H2V39Gt4JNzmw8xHqG2m7dC7wKFzcGizRx33u8ou6BGN,1792909838,1792911600,26144,2.614e-05,2.614e-05,objetivo,4.2231779,42.231779,True,False,,,15.9,26144,42489,41,8.4,4.5,1657,0.77,0.98,0
+control/relampago_15m:9uNgkUWsRDCMsnE6UX9aJ9bCwj3Lw3pjTU4TnMEnpump:1792911575,control,relampago_15m,BILLIONS,9uNgkUWsRDCMsnE6UX9aJ9bCwj3Lw3pjTU4TnMEnpump,1792911575,1792911660,57259,5.823e-05,6.0572024e-05,stop,-1.9357886,-19.357886,False,False,,,136.7,57259,21609,-86.1,-7.1,1.26,13388,26.33,0.12,0
