@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:DTjg518diQLTN4b8EmvBwiRyD4Jb9bUp54z4Y5Jppump:1792975496,control,relampago_15m,DOPE,DTjg518diQLTN4b8EmvBwiRyD4Jb9bUp54z4Y5Jppump,1792975496,1792976400,98665,0.0001044,0.0001044,tiempo,-0.52741006,-5.2741006,False,False,,,561.4,98665,25636,2.1,0.5,3.71,447,0.18,0.98,0
