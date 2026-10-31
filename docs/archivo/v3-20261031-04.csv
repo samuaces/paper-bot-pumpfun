@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:6nJVg7wV1UBaWBpHuP7pEHLBd26U4cj6vXnGShobpump:1793411810,control,rapida_1h,Apple,6nJVg7wV1UBaWBpHuP7pEHLBd26U4cj6vXnGShobpump,1793411810,1793412000,672168,0.0006747,0.0006747,objetivo,-0.56720005,-5.6720005,True,False,,,76.1,672168,68332,9.8,3.6,3.07,19831,5.78,0.89,1
