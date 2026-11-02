@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_1h:DTVcrMAEMwpSSBvu6W7P3BLZsRhFZb6bSzARFDqobfCT:1793599194,fuera,x2_1h,MOVEMBER,DTVcrMAEMwpSSBvu6W7P3BLZsRhFZb6bSzARFDqobfCT,1793599194,1793602800,54794,5.76e-05,5.76e-05,tiempo,1.1136341,11.136341,False,False,,,561.3,54794,18609,-10.9,-4,1.06,144,0.28,0.3,0
+control/relampago_15m:9ywfqNgWdRBWp2buZQPGgNW63SipmdTevAat8aACpump:1793602445,control,relampago_15m,Tesla,9ywfqNgWdRBWp2buZQPGgNW63SipmdTevAat8aACpump,1793602445,1793602800,174906,0.0001749,0.0001852011,objetivo,1.3585423,13.585423,True,False,,,15.5,174906,32452,346,21,1.12,2624,0.68,1,0
