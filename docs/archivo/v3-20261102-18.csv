@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:C8DuN9DNbqoB45HUXRtk59BYvzwPRjmoaxSHEMicpump:1793634300,control,relampago_15m,TREMP,C8DuN9DNbqoB45HUXRtk59BYvzwPRjmoaxSHEMicpump,1793634300,1793635200,21678,2.202e-05,2.202e-05,tiempo,-0.55121475,-5.5121475,False,False,,,924.8,21678,11570,0.7,0,0,4,0,0.13,0
+control/rapida_1h:8doqF589BVFRMgmEtxNBcJitS571qT9T5FrTUomGpump:1793634820,control,rapida_1h,SI,8doqF589BVFRMgmEtxNBcJitS571qT9T5FrTUomGpump,1793634820,1793635200,72758,7.288e-05,7.5940412e-05,stop,-2.8429232,-28.429232,False,False,,,15.7,72758,20458,87.1,45.1,1.02,4547,3.98,1,0
