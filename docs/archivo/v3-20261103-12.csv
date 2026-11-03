@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:6mXFCoZ515w37YfmwXGJMPfQfiK5tr9WkihW3oN9pump:1793699085,control,relampago_15m,PIRATE,6mXFCoZ515w37YfmwXGJMPfQfiK5tr9WkihW3oN9pump,1793699085,1793700000,96390,0.0001013,0.0001013,tiempo,-0.36701593,-3.6701593,False,False,,,985,96390,24345,1.3,0,0.38,40,0.06,0.68,0
