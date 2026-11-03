@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:E4GoCJKYDd3ahSFHPQW6aCFsECxSwBkXS8Z166kapump:1793681265,control,rapida_1h,Riot Games,E4GoCJKYDd3ahSFHPQW6aCFsECxSwBkXS8Z166kapump,1793681265,1793682000,161103,0.0001611,0.00016638895,objetivo,4.2231779,42.231779,True,False,,,15.4,161103,30751,320,10.4,5.61,6429,0.69,1,0
