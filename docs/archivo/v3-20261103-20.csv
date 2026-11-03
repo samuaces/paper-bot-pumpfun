@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:PNVSDESh2jmXjxw3W9cynHPYEBkeu9wFndtEPyUpump:1793727997,control,relampago_15m,XTO,PNVSDESh2jmXjxw3W9cynHPYEBkeu9wFndtEPyUpump,1793727997,1793728920,1489646,0.001489,0.001489,tiempo,-0.50207427,-5.0207427,False,False,,,710.3,1489646,97744,2.4,0.3,3.5,45,0.01,0.01,0
+control/relampago_15m:8muc9DdhqWfAPcvmEebNQCG89bLiwi12T2KtBtzVpump:1793728748,control,relampago_15m,ANONVOYAGE,8muc9DdhqWfAPcvmEebNQCG89bLiwi12T2KtBtzVpump,1793728748,1793728920,1761434,0.001769,0.0017844031,stop,-1.9357886,-19.357886,False,False,,,257.5,1761434,112954,-3.5,-7.5,1.49,17958,1.24,0.75,0
