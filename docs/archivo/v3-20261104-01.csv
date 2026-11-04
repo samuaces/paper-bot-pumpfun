@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:5hysrWKpTNwRXJjP3j8gpUZnZUYXxHJJBEWSyP4jpump:1793745491,control,rapida_1h,Democrat,5hysrWKpTNwRXJjP3j8gpUZnZUYXxHJJBEWSyP4jpump,1793745491,1793746800,20241,2.108e-05,2.108e-05,stop,-2.8429232,-28.429232,False,False,,,1220,20241,10247,-16,-4.5,0.98,99,0.25,0.37,0
