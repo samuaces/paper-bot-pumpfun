@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:o38cMmDP6DNBKPvzykXn4UKGT67DCsi8iDUQfsnpump:1793764675,control,relampago_15m,ChatGPT,o38cMmDP6DNBKPvzykXn4UKGT67DCsi8iDUQfsnpump,1793764675,1793764860,69234,6.923e-05,7.2372219e-05,objetivo,1.3585423,13.585423,True,False,,,15.6,69234,19475,83.2,42.8,1.75,10363,1.25,0.61,0
