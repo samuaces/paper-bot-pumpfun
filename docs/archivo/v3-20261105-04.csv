@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:4BCbx4hB1XPmC5mLHsFyHEghC5fb9Afu7THLGXiHpump:1793841940,control,rapida_1h,CHILLCATS,4BCbx4hB1XPmC5mLHsFyHEghC5fb9Afu7THLGXiHpump,1793841940,1793844000,31182,3.254e-05,3.254e-05,objetivo,4.2231779,42.231779,True,False,,,1255.1,31182,14873,0.9,1.4,1,8,0.01,0.07,0
