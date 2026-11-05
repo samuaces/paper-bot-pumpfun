@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_24h:C31ST9i1JCpspjEJ2zUDXDeED8YDQTkHwMWwALrdwA4:1793817689,fuera,x2_24h,george,C31ST9i1JCpspjEJ2zUDXDeED8YDQTkHwMWwALrdwA4,1793817689,1793840460,93083,9.308e-07,9.9906356e-07,objetivo,8.9975705,89.975705,True,False,,,15.9,93083,142247,72.7,4.6,1.68,3033,9.4,0.98,0
