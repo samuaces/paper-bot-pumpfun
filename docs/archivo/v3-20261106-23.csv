@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:FTq73TCrVnuFSnRXZvQ8HvertNtLhTFkVn29Fwzzp2ap:1793998742,fuera,relampago_15m,FUSE,FTq73TCrVnuFSnRXZvQ8HvertNtLhTFkVn29Fwzzp2ap,1793998742,1793998920,112890,0.0001128,0.00012383551,objetivo,1.3585423,13.585423,True,False,,,15.6,112890,29573,942,23.7,2.84,2981,9.64,1,0
