@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:97EzZhybbmahzrceYiuZMrpdL8NtTKoXXzM6VoQP3o4L:1794002250,fuera,relampago_15m,SAFU,97EzZhybbmahzrceYiuZMrpdL8NtTKoXXzM6VoQP3o4L,1794002250,1794002700,29379,2.937e-05,2.937e-05,objetivo,1.2633096,12.633096,True,False,,,15.8,29379,46135,63.1,18.9,6.41,2030,1.09,1,0
