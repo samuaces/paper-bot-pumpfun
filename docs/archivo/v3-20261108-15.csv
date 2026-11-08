@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_1h:9X3GyP7Y8Mdd6CXnuqaANFo6QVQp9n5bABTX2UKspump:1794139254,control,x2_1h,Titcoin,9X3GyP7Y8Mdd6CXnuqaANFo6QVQp9n5bABTX2UKspump,1794139254,1794142854,20969,2.215e-05,2.215e-05,tiempo,-0.55121475,-5.5121475,False,False,,,186.9,20969,11035,82.9,13.4,2.59,79,0.18,0.47,0
+control/rapida_1h:9X3GyP7Y8Mdd6CXnuqaANFo6QVQp9n5bABTX2UKspump:1794139254,control,rapida_1h,Titcoin,9X3GyP7Y8Mdd6CXnuqaANFo6QVQp9n5bABTX2UKspump,1794139254,1794142854,20969,2.215e-05,2.215e-05,tiempo,-0.55121475,-5.5121475,False,False,,,186.9,20969,11035,82.9,13.4,2.59,79,0.18,0.47,0
