@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:EiEHsNWf52tEACk5x2iP8HxgunFECXrVvSfoHQxipa5x:1794185030,fuera,rapida_1h,Leonida,EiEHsNWf52tEACk5x2iP8HxgunFECXrVvSfoHQxipa5x,1794185030,1794186000,20773,2.077e-05,2.077e-05,objetivo,4.2231779,42.231779,True,False,,,46.4,20773,20130,300,25.4,1.01,1589,3.26,1,0
