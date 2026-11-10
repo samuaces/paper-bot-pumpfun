@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:BYomdjaTYfMS5keHXmvcAypbFnkYxBmPrFJUYUVzi7iD:1794297420,fuera,relampago_15m,SpaceX,BYomdjaTYfMS5keHXmvcAypbFnkYxBmPrFJUYUVzi7iD,1794297420,1794297600,38339,3.833e-05,4.7517533e-05,objetivo,1.3585423,13.585423,True,False,,,76.1,38339,34055,65.7,-10.1,1.74,4658,4.79,0.33,0
