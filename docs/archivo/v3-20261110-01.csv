@@ -1,2 +1,3 @@
 id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
 fuera/relampago_15m:12XsNz6NYSZhw5ZwRCymFYJnoU2xUHZt1vLsFMpkg5fJ:1794264382,fuera,relampago_15m,FAIR,12XsNz6NYSZhw5ZwRCymFYJnoU2xUHZt1vLsFMpkg5fJ,1794264382,1794265282,73315,7.331e-05,7.331e-05,tiempo,-0.82672521,-8.2672521,False,False,,,15.2,73315,99275,117,22.3,1.88,2343,8.07,1,0
+fuera/rapida_1h:J6bFMQBtQebtBeUVniQGGq4oPMckDWABrdHqAT8aCH32:1794263746,fuera,rapida_1h,HWAN,J6bFMQBtQebtBeUVniQGGq4oPMckDWABrdHqAT8aCH32,1794263746,1794265860,64983,6.498e-05,6.5409184e-05,objetivo,4.2231779,42.231779,True,False,,,91,64983,35694,208,6.7,2.01,2331,2.27,1,0
