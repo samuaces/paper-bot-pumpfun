@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:EVGFr8x95KhSLGWZ789RXgnytSZKSwNbCTUoFzkqpump:1794261562,control,relampago_15m,JENSENHUNG,EVGFr8x95KhSLGWZ789RXgnytSZKSwNbCTUoFzkqpump,1794261562,1794261720,69412,6.952e-05,8.2688944e-05,objetivo,-0.091457711,-0.91457711,True,False,,,15.3,69412,19318,93.6,55,1.01,5686,5.3,1,0
