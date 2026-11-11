@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:6J8TeegLgppYX9vgYPMaMZp1jNsU2FejfBgh1k4xsmY3:1794362245,fuera,relampago_15m,大A,6J8TeegLgppYX9vgYPMaMZp1jNsU2FejfBgh1k4xsmY3,1794362245,1794362400,20653,2.065e-05,2.2318897e-05,objetivo,1.3585423,13.585423,True,False,,,15.3,20653,20896,273,49.3,1.53,3521,7.57,1,0
