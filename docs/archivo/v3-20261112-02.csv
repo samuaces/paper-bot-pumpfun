@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:27eBxDUftadPScNTvYXXfNgmy7p13KS2ERZ19DG4aKYR:1794439751,fuera,rapida_1h,GIF,27eBxDUftadPScNTvYXXfNgmy7p13KS2ERZ19DG4aKYR,1794439751,1794441600,21025,2.102e-05,2.1038379e-05,objetivo,4.0655135,40.655135,True,False,,,15.4,21025,39375,13.9,-0.3,5.42,1482,0.84,0.98,0
