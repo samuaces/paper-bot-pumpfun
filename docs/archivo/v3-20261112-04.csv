@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_24h:CqntnbogstiWnk2FpUTRqMu5o2tQUYArTj3k1BdDatfM:1794362485,fuera,x2_24h,Gang Cat,CqntnbogstiWnk2FpUTRqMu5o2tQUYArTj3k1BdDatfM,1794362485,1794448885,27527,2.752e-05,2.752e-05,tiempo,5.4235961,54.235961,False,False,,,15.3,27527,42895,64,3.6,4.04,1190,0.98,0.98,0
+control/relampago_15m:D7jrV6NuMGVfewJSQSMV36cXY5AzqHnoDeQMWK9Upump:1794448124,control,relampago_15m,Tilly,D7jrV6NuMGVfewJSQSMV36cXY5AzqHnoDeQMWK9Upump,1794448124,1794449024,31108,3.171e-05,3.171e-05,tiempo,-0.41629788,-4.1629788,False,False,,,258.6,31108,12347,-31.8,2.3,0.24,21,0.18,0.28,0
