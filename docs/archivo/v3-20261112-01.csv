@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:Dt2p4Gf4Cc6dm8FoTv5Wu35dMurZfaRoVBF952rWDSsv:1794437438,fuera,rapida_1h,NEX Ai,Dt2p4Gf4Cc6dm8FoTv5Wu35dMurZfaRoVBF952rWDSsv,1794437438,1794438060,31768,3.176e-05,3.2078228e-05,objetivo,4.1224261,41.224261,True,False,,,15.9,31768,47198,80.1,20.2,4.88,1553,1.28,1,0
