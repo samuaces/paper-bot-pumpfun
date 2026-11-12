@@ -1,0 +1,4 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_24h:yP27gYkRkUv7oiwwHeSy2pP16AXGcSWHhMKvsYWEhZx:1794483670,fuera,x2_24h,MedTech,yP27gYkRkUv7oiwwHeSy2pP16AXGcSWHhMKvsYWEhZx,1794483670,1794484800,29622,2.962e-05,2.962e-05,stop,-10.099366,-100.99366,False,False,,,15,29622,44423,73.4,17,3.82,1773,1.69,1,0
+fuera/x2_1h:yP27gYkRkUv7oiwwHeSy2pP16AXGcSWHhMKvsYWEhZx:1794483670,fuera,x2_1h,MedTech,yP27gYkRkUv7oiwwHeSy2pP16AXGcSWHhMKvsYWEhZx,1794483670,1794484800,29622,2.962e-05,2.962e-05,stop,-10.099366,-100.99366,False,False,,,15,29622,44423,73.4,17,3.82,1773,1.69,1,0
+fuera/relampago_15m:GhwjQgSqrsvPh79CL4y2nfMwQ477wuVZk3WmsLCZYyDU:1794484309,fuera,relampago_15m,FLYCAT,GhwjQgSqrsvPh79CL4y2nfMwQ477wuVZk3WmsLCZYyDU,1794484309,1794484920,27488,2.748e-05,2.9943697e-05,objetivo,1.3585423,13.585423,True,False,,,16,27488,35337,112,46.5,6.49,1925,1.56,1,0
