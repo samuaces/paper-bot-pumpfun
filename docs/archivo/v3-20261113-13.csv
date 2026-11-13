@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_1h:9sFGCTjEsBk78uC2bCdxtwuUM1aartbBhe8WQXwRpump:1794565670,control,x2_1h,Sakura,9sFGCTjEsBk78uC2bCdxtwuUM1aartbBhe8WQXwRpump,1794565670,1794567600,223470,0.0002333,0.00023813586,objetivo,8.9975705,89.975705,True,False,,,137.2,223470,38768,-5.5,-15,1.3,6973,7.88,0.55,0
