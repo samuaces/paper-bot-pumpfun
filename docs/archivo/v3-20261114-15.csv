@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:FiRFwhyRwG4ivtydVNjzKpAR4Lutm6up3HEU9RaFpump:1794660266,control,relampago_15m,room,FiRFwhyRwG4ivtydVNjzKpAR4Lutm6up3HEU9RaFpump,1794660266,1794661166,40403,4.173e-05,4.173e-05,tiempo,-0.55121475,-5.5121475,False,False,,,1045.9,40403,13561,0,0,0,0,0,0.87,0
+fuera/rapida_1h:6Xh5qqGTRcuZ6RZGYitRmHAVRhgay97geEVJBDP3DnBS:1794660901,fuera,rapida_1h,AMD,6Xh5qqGTRcuZ6RZGYitRmHAVRhgay97geEVJBDP3DnBS,1794660901,1794661200,30497,3.049e-05,3.6065511e-05,objetivo,4.2231779,42.231779,True,False,,,15.1,30497,28155,323,26.2,1.6,1185,1.58,0.94,0
