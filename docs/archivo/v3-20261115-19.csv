@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:EwZyE4FXtTUPxGfkSyo7xarbSdfjESNr5KnziNyZsvLE:1794761687,fuera,relampago_15m,twert,EwZyE4FXtTUPxGfkSyo7xarbSdfjESNr5KnziNyZsvLE,1794761687,1794762000,46796,4.679e-05,4.8570346e-05,stop,-1.9357886,-19.357886,False,False,,,158,46796,34588,69.8,27.4,1.51,2641,3.55,0.64,0
+fuera/relampago_15m:FBLXmiE6rd7METa3jvF2Kn9i9CmKbDkyh12evZdyN2Wf:1794761687,fuera,relampago_15m,BLG,FBLXmiE6rd7METa3jvF2Kn9i9CmKbDkyh12evZdyN2Wf,1794761687,1794762060,22642,2.264e-05,2.264e-05,objetivo,1.3585423,13.585423,True,False,,,15,22642,36053,58.2,6.3,4.39,1666,1.54,0.99,0
