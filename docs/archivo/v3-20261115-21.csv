@@ -1,0 +1,4 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_24h:9i7z2gUMUp5VFTzmW6vGGhm4GweDjn43Hfe6YpQ6Ymf:1794682793,fuera,x2_24h,Other,9i7z2gUMUp5VFTzmW6vGGhm4GweDjn43Hfe6YpQ6Ymf,1794682793,1794769193,68493,6.849e-07,6.849e-07,tiempo,-0.56075132,-5.6075132,False,False,,,15.5,68493,102971,75.3,4.1,1.78,2363,7.34,1,0
+fuera/x2_1h:Gs7tTwmkToHs8AGEXyhfjFZvttZavFCmtECpV5pKQQwx:1794765670,fuera,x2_1h,BLG,Gs7tTwmkToHs8AGEXyhfjFZvttZavFCmtECpV5pKQQwx,1794765670,1794769270,26781,2.678e-05,2.7848933e-05,tiempo,1.0258698,10.258698,False,False,,,15.3,26781,40551,73.9,8.5,4.33,1595,1.18,1,0
+fuera/rapida_1h:Gs7tTwmkToHs8AGEXyhfjFZvttZavFCmtECpV5pKQQwx:1794765670,fuera,rapida_1h,BLG,Gs7tTwmkToHs8AGEXyhfjFZvttZavFCmtECpV5pKQQwx,1794765670,1794769270,26781,2.678e-05,2.7848933e-05,tiempo,1.0258698,10.258698,False,False,,,15.3,26781,40551,73.9,8.5,4.33,1595,1.18,1,0
