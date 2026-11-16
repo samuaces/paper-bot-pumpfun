@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:21ka5CAfvMU7PuzcAgwj7pQtpNM7D48oLf1D1kkdpump:1794851735,control,relampago_15m,CoinGecko,21ka5CAfvMU7PuzcAgwj7pQtpNM7D48oLf1D1kkdpump,1794851735,1794852000,60352,6.042e-05,6.3855151e-05,objetivo,1.3585423,13.585423,True,False,,,15.2,60352,16207,102,23.3,1.03,6574,0.92,1,0
