@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_24h:a78XQ1CaYZmszNZ67dB1D23nPw7CfmT4qXGgiE1pump:1794818802,control,x2_24h,USOI,a78XQ1CaYZmszNZ67dB1D23nPw7CfmT4qXGgiE1pump,1794818802,1794888060,1894796,0.001894,0.001894,stop,-10.093552,-100.93552,False,False,,,15.5,1894796,96495,6303,1,3.8,24,0.43,1,0
+fuera/rapida_1h:3zHwoFFNfyZ6HDLvyuzSyAUBPUXPcauJKujNQXLcNT9g:1794886651,fuera,rapida_1h,Americhan,3zHwoFFNfyZ6HDLvyuzSyAUBPUXPcauJKujNQXLcNT9g,1794886651,1794888060,1028173,0.001028,0.0011325596,objetivo,3.9655619,39.655619,True,False,,,15.1,1028173,17846,687,-3.4,1.04,1939,4.19,0.89,0
