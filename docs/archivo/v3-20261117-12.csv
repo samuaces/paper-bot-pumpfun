@@ -1,0 +1,4 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_1h:BPBKGG9G2A44JnB3RMfH6yVfDG5vpUVzkTtY4rjwVjes:1794905976,fuera,x2_1h,GCAT,BPBKGG9G2A44JnB3RMfH6yVfDG5vpUVzkTtY4rjwVjes,1794905976,1794909600,24368,2.436e-05,2.545027e-05,tiempo,8.3794951,83.794951,False,False,,,15.4,24368,28183,254,10.9,1.52,3289,50.02,1,0
+fuera/x2_24h:122Yd36Npy1wdcQ7fWPvHioercS2VzTsWZNxBbeY8R2t:1794823421,fuera,x2_24h,butt,122Yd36Npy1wdcQ7fWPvHioercS2VzTsWZNxBbeY8R2t,1794823421,1794909821,78635,7.863e-07,8.0894519e-07,tiempo,-0.6909439,-6.909439,False,False,,,16,78635,120386,72.9,8,1.82,3426,8.76,1,0
+fuera/x2_24h:BPBKGG9G2A44JnB3RMfH6yVfDG5vpUVzkTtY4rjwVjes:1794905976,fuera,x2_24h,GCAT,BPBKGG9G2A44JnB3RMfH6yVfDG5vpUVzkTtY4rjwVjes,1794905976,1794909840,24368,2.436e-05,2.545027e-05,objetivo,8.7075689,87.075689,True,False,,,15.4,24368,28183,254,10.9,1.52,3289,50.02,1,0
