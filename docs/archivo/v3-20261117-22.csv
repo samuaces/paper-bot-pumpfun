@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:CTHheAZ8V3EJ4C7FD3sUnsSRYkX3PdXichiWQNiGhv9S:1794944878,fuera,rapida_1h,vensa,CTHheAZ8V3EJ4C7FD3sUnsSRYkX3PdXichiWQNiGhv9S,1794944878,1794945600,22704,2.27e-05,2.3239929e-05,objetivo,4.2231779,42.231779,True,False,,,26.1,22704,32515,48.5,17.8,5.86,2812,2.27,1,0
+control/relampago_15m:f7B479RULsQMXXXmCeLQTrFTZMHoXLMQk9rkBtRpump:1794944758,control,relampago_15m,JESTER,f7B479RULsQMXXXmCeLQTrFTZMHoXLMQk9rkBtRpump,1794944758,1794945658,28855,2.917e-05,2.917e-05,tiempo,-0.55121475,-5.5121475,False,False,,,196.8,28855,11042,-14.3,0,0,1,0.09,0.16,0
