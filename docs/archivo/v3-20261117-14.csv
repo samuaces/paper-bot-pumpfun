@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:D2uhMKwe4uLc7mhN4PKgwNPziLnrtYgz8V3j9ee5pump:1794915933,control,relampago_15m,Debu,D2uhMKwe4uLc7mhN4PKgwNPziLnrtYgz8V3j9ee5pump,1794915933,1794916833,24681,2.541e-05,2.541e-05,tiempo,-1.2803695,-12.803695,False,False,,,804.1,24681,11182,-0.7,2.9,1.24,65,0.13,0.18,0
