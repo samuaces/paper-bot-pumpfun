@@ -1,0 +1,4 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:EvH3RsJ8NhSazw8yJdAi44kG3H1a5FvhrVZVnJKNpump:1794973651,control,relampago_15m,WOFI,EvH3RsJ8NhSazw8yJdAi44kG3H1a5FvhrVZVnJKNpump,1794973651,1794974400,702626,0.0007026,0.0007026,stop,-1.9357886,-19.357886,False,False,,,15.4,702626,59595,2160,-1.2,2.14,342,0.39,0.98,0
+fuera/x2_24h:9vAjJNJB3ZX2sgtTm4VaXFsb5cLxdaLYvyjvL5SCyLZ3:1794972665,fuera,x2_24h,vensa,9vAjJNJB3ZX2sgtTm4VaXFsb5cLxdaLYvyjvL5SCyLZ3,1794972665,1794974460,24003,2.4e-05,2.4e-05,objetivo,8.9975705,89.975705,True,False,,,15.7,24003,38009,52.2,7,7.17,1920,1.02,1,0
+fuera/x2_1h:9vAjJNJB3ZX2sgtTm4VaXFsb5cLxdaLYvyjvL5SCyLZ3:1794972665,fuera,x2_1h,vensa,9vAjJNJB3ZX2sgtTm4VaXFsb5cLxdaLYvyjvL5SCyLZ3,1794972665,1794974460,24003,2.4e-05,2.4e-05,objetivo,8.9975705,89.975705,True,False,,,15.7,24003,38009,52.2,7,7.17,1920,1.02,1,0
