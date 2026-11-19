@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:3guXwT9btWrL4jDFgKevD2fTvEbXEBsR99ZARqg5pump:1795113573,control,rapida_1h,DATITTY,3guXwT9btWrL4jDFgKevD2fTvEbXEBsR99ZARqg5pump,1795113573,1795114860,191905,0.0001919,0.0001919,objetivo,4.2231779,42.231779,True,False,,,15.8,191905,30529,423,-5.7,2.59,1842,1.85,0.82,0
