@@ -1,0 +1,4 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_24h:4tjoqw7FfaAv5Dyr3CYe4UQEPn4GVp5PX6Ny8oJURVFr:1795067006,fuera,x2_24h,Musk,4tjoqw7FfaAv5Dyr3CYe4UQEPn4GVp5PX6Ny8oJURVFr,1795067006,1795068000,34791,3.479e-05,3.7231509e-05,objetivo,8.9975705,89.975705,True,False,,,16,34791,45700,133,27,5.08,1629,1.2,1,0
+fuera/x2_1h:4tjoqw7FfaAv5Dyr3CYe4UQEPn4GVp5PX6Ny8oJURVFr:1795067006,fuera,x2_1h,Musk,4tjoqw7FfaAv5Dyr3CYe4UQEPn4GVp5PX6Ny8oJURVFr,1795067006,1795068000,34791,3.479e-05,3.7231509e-05,objetivo,8.9975705,89.975705,True,False,,,16,34791,45700,133,27,5.08,1629,1.2,1,0
+control/rapida_1h:4NShmh1AkwX2PMA8KSJDbbp8ExLUuHXbYBmzRjNNpump:1795066129,control,rapida_1h,GTA6IRL,4NShmh1AkwX2PMA8KSJDbbp8ExLUuHXbYBmzRjNNpump,1795066129,1795068060,74239,7.524e-05,7.524e-05,objetivo,4.2231779,42.231779,True,False,,,136.7,74239,18841,18.5,-8,1.04,194,0.48,0.42,0
