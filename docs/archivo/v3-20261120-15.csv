@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:7bCiddGLe5aM8HE2pigT9jsqkmC1HSPxyXN6GkHEpump:1795179515,control,relampago_15m,OGTA,7bCiddGLe5aM8HE2pigT9jsqkmC1HSPxyXN6GkHEpump,1795179515,1795179660,311359,0.0003128,0.0003128,stop,-1.9357886,-19.357886,False,False,,,1106.8,311359,42836,4.4,0.1,2.69,9654,2.12,0.16,0
