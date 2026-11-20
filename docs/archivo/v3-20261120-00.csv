@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/rapida_1h:o34b87jNyknKwj2UcP9pf2EVyQSoPvHn1zt41zGpump:1795124635,control,rapida_1h,ANT,o34b87jNyknKwj2UcP9pf2EVyQSoPvHn1zt41zGpump,1795124635,1795125900,37493,3.754e-05,3.8097817e-05,objetivo,4.1649341,41.649341,True,False,,,15.2,37493,12566,9.4,12.7,1.02,8468,0.8,0.93,0
