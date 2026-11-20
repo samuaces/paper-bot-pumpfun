@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/rapida_1h:GrVHJyh7Z1kGDSLNnTUD8koQhxF9RWLjLMUdEYTXSwxM:1795141838,fuera,rapida_1h,GTAVI,GrVHJyh7Z1kGDSLNnTUD8koQhxF9RWLjLMUdEYTXSwxM,1795141838,1795143600,67386,6.738e-05,6.738e-05,objetivo,4.0772712,40.772712,True,False,,,75.6,67386,79635,135,15.4,1.09,9924,46.02,1,0
+fuera/rapida_1h:G7dMtE2mDCKN2uPRzVWJcTNGnN2iy84Va8z2Z94hreQT:1795142718,fuera,rapida_1h,Friend,G7dMtE2mDCKN2uPRzVWJcTNGnN2iy84Va8z2Z94hreQT,1795142718,1795143780,20141,2.014e-05,2.022464e-05,objetivo,4.2231779,42.231779,True,False,,,18.8,20141,34086,40.4,2.4,6.08,2223,1.21,1,0
