@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_1h:7R4MP6VX7n3RMNhL9zsk5Zu5ibZvwq8npUYnRq7epump:1795249764,control,x2_1h,Singularity,7R4MP6VX7n3RMNhL9zsk5Zu5ibZvwq8npUYnRq7epump,1795249764,1795251660,85196,8.963e-05,8.963e-05,stop,-3.7500578,-37.500578,False,False,,,743,85196,21728,-40.4,-5.9,1.45,763,1.62,0.26,0
