@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/relampago_15m:FbB1YDjgy8S1aFhQLLppM8Xhz6wMbu2dCLcD8Jco5oSV:1795298304,fuera,relampago_15m,BTC,FbB1YDjgy8S1aFhQLLppM8Xhz6wMbu2dCLcD8Jco5oSV,1795298304,1795298460,75629,7.562e-05,8.9735173e-05,objetivo,1.3585423,13.585423,True,False,,,15.8,75629,68272,410,1.5,2.18,4519,15.16,0.81,0
