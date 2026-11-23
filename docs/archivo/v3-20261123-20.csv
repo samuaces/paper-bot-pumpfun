@@ -1,0 +1,3 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_1h:FuKY3dk7QmpbDdQRjzbjB3G6PiCuqKNvN4dAWDpwpump:1795453180,control,x2_1h,OpenIndex,FuKY3dk7QmpbDdQRjzbjB3G6PiCuqKNvN4dAWDpwpump,1795453180,1795456800,324186,0.0003393,0.00033931888,tiempo,-1.2983105,-12.983105,False,False,,,1410.3,324186,47108,15.8,9,1.14,390,0.6,0.47,0
+control/rapida_1h:FuKY3dk7QmpbDdQRjzbjB3G6PiCuqKNvN4dAWDpwpump:1795453180,control,rapida_1h,OpenIndex,FuKY3dk7QmpbDdQRjzbjB3G6PiCuqKNvN4dAWDpwpump,1795453180,1795456800,324186,0.0003393,0.00033931888,tiempo,-1.2983105,-12.983105,False,False,,,1410.3,324186,47108,15.8,9,1.14,390,0.6,0.47,0
