@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_1h:76EB6NkVpK5QWzUQgvXyCCCtEFX7E9Efq8thvJgupump:1795581097,control,x2_1h,ANT,76EB6NkVpK5QWzUQgvXyCCCtEFX7E9Efq8thvJgupump,1795581097,1795582800,53002,5.507e-05,5.507e-05,stop,-5.1740784,-51.740784,False,False,,,75.4,53002,15283,-4.8,26.4,1.02,24813,3.28,0.46,0
