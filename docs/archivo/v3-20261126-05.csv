@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:ebSyELGXjyddEmEcZ9MpvZdANmx1aFB6kGWKDkUpump:1795661369,control,relampago_15m,BARRON,ebSyELGXjyddEmEcZ9MpvZdANmx1aFB6kGWKDkUpump,1795661369,1795662000,39660,3.969e-05,3.9823842e-05,objetivo,1.3585423,13.585423,True,False,,,15.2,39660,12865,22.9,0.1,1.01,6669,0.32,0.98,0
