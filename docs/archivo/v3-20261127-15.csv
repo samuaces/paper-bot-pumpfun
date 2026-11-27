@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+fuera/x2_1h:3vmPGGNYCmiKB1oUe35KKwfQfRznXzhwqctB1ffxBGk8:1795780774,fuera,x2_1h,BSC,3vmPGGNYCmiKB1oUe35KKwfQfRznXzhwqctB1ffxBGk8,1795780774,1795784400,79702,7.97e-05,8.3397195e-05,tiempo,5.4863632,54.863632,False,False,,,75.7,79702,68992,197,7.8,1.16,2122,2.48,1,0
