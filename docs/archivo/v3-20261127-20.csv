@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/x2_1h:7Y2CVbnqZRvR5RUvEJ9RQ73fZEfv7ybNcysytAepump:1795800823,control,x2_1h,WINSTON,7Y2CVbnqZRvR5RUvEJ9RQ73fZEfv7ybNcysytAepump,1795800823,1795802400,140174,0.0001404,0.00015547214,stop,-3.7500578,-37.500578,False,False,,,258.8,140174,28402,-25,-15.3,1.14,2195,3.64,0.54,0
