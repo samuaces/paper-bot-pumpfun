@@ -1,0 +1,2 @@
+id,strat,exit,symbol,mint,t_in,t_out,mc_in,p_dex,p_ref,reason,pnl,pnl_pct,tp_done,ambiguous,sin_velas,corregida,f_age,f_mc,f_liq,f_h1,f_m5,f_bs,f_tx,f_turn,f_dd,f_soc
+control/relampago_15m:CvXQ9qEriGgTbMWyF8L1U7oqn9ev8A49N1dzNE8cpump:1795816681,control,relampago_15m,CINU,CvXQ9qEriGgTbMWyF8L1U7oqn9ev8A49N1dzNE8cpump,1795816681,1795816800,171390,0.0001716,0.0001716,stop,-2.4463992,-24.463992,False,False,,,1412.5,171390,36598,-19.4,-0.9,0.77,140,0.19,0.45,1
